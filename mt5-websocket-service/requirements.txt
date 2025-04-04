@@ -1,0 +1,10 @@
+google-cloud-storage==2.9.0
+google-cloud-bigquery==3.9.0
+websockets==10.4
+# Remove these as they're standard libraries, not packages
+# json
+# logging
+# os
+# datetime
+# asyncio is a standard library but for older Python versions it may need to be installed
+asyncio==3.4.3
