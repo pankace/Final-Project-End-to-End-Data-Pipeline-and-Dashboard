@@ -1,0 +1,110 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual triggering
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: mt5-websocket
+  REGION: us-central1
+  BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+  MT5_SERVER_URL: ${{ secrets.MT5_SERVER_URL }}
+  MT5_SYMBOLS: ${{ secrets.MT5_SYMBOLS }}
+  STORAGE_TYPE: ${{ secrets.STORAGE_TYPE }} # gcs or bigquery
+  BQ_DATASET_ID: ${{ secrets.BQ_DATASET_ID }}
+
+jobs:
+  setup-build-deploy:
+    name: Setup, Build, and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
+
+    - name: Authenticate with Google Cloud
+      run: |
+        gcloud auth configure-docker
+
+    - name: Build and Push Docker image
+      run: |
+        docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+
+    - name: Deploy to Cloud Run
+      id: deploy
+      uses: google-github-actions/deploy-cloudrun@v1
+      with:
+        service: ${{ env.SERVICE_NAME }}
+        image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        region: ${{ env.REGION }}
+        env_vars: |
+          MT5_SERVER_URL=${{ env.MT5_SERVER_URL }}
+          MT5_SYMBOLS=${{ env.MT5_SYMBOLS }}
+          STORAGE_TYPE=${{ env.STORAGE_TYPE }}
+          GCS_BUCKET_NAME=${{ env.BUCKET_NAME }}
+          BQ_DATASET_ID=${{ env.BQ_DATASET_ID }}
+        flags: |
+          --cpu=1
+          --memory=512Mi
+          --timeout=3600
+          --min-instances=1
+          --concurrency=1
+          --allow-unauthenticated
+
+    - name: Setup IAM permissions
+      run: |
+        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(status.url)")
+        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(serviceAccountEmail)")
+
+        # Grant GCS permissions if storage type is GCS
+        if [ "${{ env.STORAGE_TYPE }}" = "gcs" ]; then
+          echo "Setting up GCS permissions..."
+          gcloud storage buckets add-iam-policy-binding gs://${{ env.BUCKET_NAME }} \
+            --member="serviceAccount:$SERVICE_ACCOUNT" \
+            --role="roles/storage.objectCreator"
+        fi
+
+        # Grant BigQuery permissions if storage type is BigQuery
+        if [ "${{ env.STORAGE_TYPE }}" = "bigquery" ]; then
+          echo "Setting up BigQuery permissions..."
+          gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
+            --member="serviceAccount:$SERVICE_ACCOUNT" \
+            --role="roles/bigquery.dataEditor"
+        fi
+
+    - name: Create Cloud Scheduler job
+      run: |
+        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(status.url)")
+        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(serviceAccountEmail)")
+        
+        # Check if scheduler job already exists
+        if gcloud scheduler jobs describe keep-${{ env.SERVICE_NAME }}-alive 2>/dev/null; then
+          echo "Updating existing scheduler job..."
+          gcloud scheduler jobs update http keep-${{ env.SERVICE_NAME }}-alive \
+            --schedule="*/15 * * * *" \
+            --uri="$SERVICE_URL" \
+            --http-method=GET \
+            --oidc-service-account-email=$SERVICE_ACCOUNT
+        else
+          echo "Creating new scheduler job..."
+          gcloud scheduler jobs create http keep-${{ env.SERVICE_NAME }}-alive \
+            --schedule="*/15 * * * *" \
+            --uri="$SERVICE_URL" \
+            --http-method=GET \
+            --oidc-service-account-email=$SERVICE_ACCOUNT
+        fi
+
+    - name: Print service URL
+      run: |
+        echo "Service URL: $(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format='value(status.url)')"
