@@ -1,54 +1,90 @@
-from google.cloud import storage, bigquery
-import json
+import asyncio
 import os
+import logging
+import signal
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from websocket_client import MT5WebSocketClient
+from storage_handler import StorageHandler
 
-class StorageHandler:
-    def __init__(self, storage_type='gcs', bucket_name=None, dataset_id=None):
-        self.storage_type = storage_type
-        self.bucket_name = bucket_name
-        self.dataset_id = dataset_id
-        
-        if self.storage_type == 'gcs':
-            self.client = storage.Client()
-            if not self.bucket_name:
-                raise ValueError("Bucket name must be provided for Google Cloud Storage.")
-            self.bucket = self.client.bucket(self.bucket_name)
-        elif self.storage_type == 'bigquery':
-            self.client = bigquery.Client()
-            if not self.dataset_id:
-                raise ValueError("Dataset ID must be provided for BigQuery.")
-        else:
-            raise ValueError("Invalid storage type. Use 'gcs' for Google Cloud Storage or 'bigquery' for BigQuery.")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
-    def save_to_gcs(self, symbol, bid, ask, spread, timestamp):
-        filename = f"{symbol}_{timestamp}.json"
-        blob = self.bucket.blob(filename)
-        data = {
-            'symbol': symbol,
-            'bid': bid,
-            'ask': ask,
-            'spread': spread,
-            'timestamp': timestamp
-        }
-        blob.upload_from_string(json.dumps(data), content_type='application/json')
+# Read configuration from environment variables with defaults
+SERVER_URL = os.environ.get("MT5_SERVER_URL", "ws://34.87.87.53:8765")
+SYMBOLS = os.environ.get("MT5_SYMBOLS", "XAUUSD").split(',')
+STORAGE_TYPE = os.environ.get("STORAGE_TYPE", "gcs")  # gcs or bigquery
+GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "mt5-price-data")
+BQ_DATASET_ID = os.environ.get("BQ_DATASET_ID", "mt5_data")
+BQ_TABLE_ID = os.environ.get("BQ_TABLE_ID", "price_data")
+
+# Global variable to hold our client
+client = None
+client_thread = None
+is_running = False
+
+# Simple HTTP request handler to satisfy Cloud Run
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        status_message = "MT5 WebSocket client is running" if is_running else "MT5 WebSocket client is starting..."
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(status_message.encode())
+        logger.info(f"Received HTTP request, client status: {status_message}")
+
+def start_http_server():
+    port = int(os.environ.get('PORT', 8080))
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+    logger.info(f'Starting HTTP server on port {port}')
+    httpd.serve_forever()
+
+async def websocket_client_loop():
+    global client, is_running
     
-    def save_to_bigquery(self, symbol, bid, ask, spread, timestamp):
-        table_id = f"{self.dataset_id}.{symbol}"
-        rows_to_insert = [{
-            'symbol': symbol,
-            'bid': bid,
-            'ask': ask,
-            'spread': spread,
-            'timestamp': timestamp
-        }]
-        errors = self.client.insert_rows_json(table_id, rows_to_insert)
-        if errors:
-            raise Exception(f"Failed to insert rows: {errors}")
+    # Initialize storage handler
+    if STORAGE_TYPE == "gcs":
+        storage_handler = StorageHandler(
+            storage_type='gcs', 
+            bucket_name=GCS_BUCKET_NAME
+        )
+    else:
+        storage_handler = StorageHandler(
+            storage_type='bigquery', 
+            dataset_id=BQ_DATASET_ID,
+            table_id=BQ_TABLE_ID
+        )
+    
+    # Initialize client
+    client = MT5WebSocketClient(
+        server_url=SERVER_URL,
+        symbols=SYMBOLS,
+        storage_handler=storage_handler
+    )
+    
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(sig, frame):
+        logger.info("Received shutdown signal")
+        if client:
+            client.stop()
+        
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Run the client
+    is_running = True
+    await client.connect()
+    is_running = False
 
-    def save_data(self, symbol, bid, ask, spread, timestamp):
-        if self.storage_type == 'gcs':
-            self.save_to_gcs(symbol, bid, ask, spread, timestamp)
-        elif self.storage_type == 'bigquery':
-            self.save_to_bigquery(symbol, bid, ask, spread, timestamp)
-        else:
-            raise ValueError("Invalid storage type. Use 'gcs' for Google Cloud Storage or 'bigquery' for BigQuery.")
+def main():
+    # Start HTTP server in a separate thread
+    http_thread = threading.Thread(target=start_http_server, daemon=True)
+    http_thread.start()
+    
+    # Start WebSocket client in the main thread
+    asyncio.run(websocket_client_loop())
+
+if __name__ == "__main__":
+    main()

@@ -21,5 +21,9 @@ ENV GCS_BUCKET_NAME="mt5-price-data"
 ENV BQ_DATASET_ID="mt5_data"
 ENV BQ_TABLE_ID="price_data"
 
+# Set the environment variable for the entry point
+ENV PYTHONPATH=/app
+ENV PORT=8080
+
 # Command to run the application
 CMD ["python", "src/main.py"]
