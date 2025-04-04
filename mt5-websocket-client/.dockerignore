@@ -1,11 +1,7 @@
-__dockerignore__
-*.pyc
-__pycache__/
+node_modules
+npm-debug.log
 .env
-*.csv
-*.log
-*.git
-*.gitignore
-Dockerfile
+.git
+.gitignore
 README.md
-cloudbuild.yaml
+*.log

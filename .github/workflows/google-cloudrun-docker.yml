@@ -1,4 +1,4 @@
-name: Deploy to Google Cloud Run
+name: Deploy JavaScript MT5 WebSocket Client to Google Cloud Run
 
 on:
   push:
@@ -8,120 +8,120 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: mt5-websocket-client
+  SERVICE_NAME: mt5-websocket-client-js
   REGION: us-central1
-  MT5_SERVER_URL: ${{ secrets.MT5_SERVER_URL }}
-  FOREX_SYMBOLS: ${{ secrets.FOREX_SYMBOLS }}
+  MT5_SERVER_URL: ws://34.87.87.53:8765
+  FOREX_SYMBOLS: XAUUSD,EURUSD,GBPUSD,USDTHB
   STORAGE_TYPE: bigquery
-  BQ_DATASET_ID: ${{ secrets.BQ_DATASET_ID }}
-  BQ_TABLE_ID: ${{ secrets.BQ_TABLE_ID }}
+  BQ_DATASET_ID: mt5_data
+  BQ_TABLE_ID: tabletabletable_js
 
 jobs:
   setup-build-deploy:
     name: Setup, Build, and Deploy
     runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup Google Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
       with:
-        project_id: ${{ env.PROJECT_ID }}
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        export_default_credentials: true
+        node-version: '18'
 
-    - name: Authenticate with Google Cloud
-      run: |
-        gcloud auth configure-docker
+    - id: 'auth'
+      name: 'Authenticate to Google Cloud'
+      uses: 'google-github-actions/auth@v1'
+      with:
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+        token_format: 'access_token'
 
-    - name: Update requirements.txt
-      run: |
-        # Ensure google-cloud-bigquery is in requirements.txt
-        if ! grep -q "google-cloud-bigquery" mt5-websocket-client/requirements.txt; then
-          echo "google-cloud-bigquery==3.11.3" >> mt5-websocket-client/requirements.txt
-        fi
+    - name: Set up Cloud SDK
+      uses: 'google-github-actions/setup-gcloud@v1'
+      
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-    - name: Build and Push Docker image
-      working-directory: ./mt5-websocket-client
+    # Build and push using Cloud Build
+    - name: Build and Push with Cloud Build
       run: |
-        docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} ./mt5-websocket-client-js
 
     - name: Deploy to Cloud Run
       id: deploy
-      uses: google-github-actions/deploy-cloudrun@v1
-      with:
-        service: ${{ env.SERVICE_NAME }}
-        image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        region: ${{ env.REGION }}
-        env_vars: |
-          MT5_SERVER_URL=${{ env.MT5_SERVER_URL }}
-          FOREX_SYMBOLS=${{ env.FOREX_SYMBOLS }}
-          STORAGE_TYPE=${{ env.STORAGE_TYPE }}
-          BQ_DATASET_ID=${{ env.BQ_DATASET_ID }}
-          BQ_TABLE_ID=${{ env.BQ_TABLE_ID }}
-        flags: |
-          --cpu=1
-          --memory=512Mi
-          --timeout=3600
-          --min-instances=1
+      run: |
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --allow-unauthenticated \
+          --set-env-vars="MT5_SERVER_URL=${{ env.MT5_SERVER_URL }},FOREX_SYMBOLS=${{ env.FOREX_SYMBOLS }},STORAGE_TYPE=${{ env.STORAGE_TYPE }},BQ_DATASET_ID=${{ env.BQ_DATASET_ID }},BQ_TABLE_ID=${{ env.BQ_TABLE_ID }}" \
+          --cpu=1 \
+          --memory=512Mi \
+          --timeout=3600s \
+          --min-instances=1 \
           --concurrency=1
-          --allow-unauthenticated
 
-    - name: Setup BigQuery Dataset if needed
+    - name: Create BigQuery Dataset if needed
       run: |
         # Check if dataset exists, create if it doesn't
-        if ! gcloud alpha bq datasets describe ${{ env.BQ_DATASET_ID }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
+        if ! gcloud bigquery datasets describe ${{ env.BQ_DATASET_ID }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
           echo "Creating BigQuery dataset: ${{ env.BQ_DATASET_ID }}"
-          gcloud alpha bq datasets create ${{ env.BQ_DATASET_ID }} --project=${{ env.PROJECT_ID }} --location=US
+          gcloud bigquery datasets create ${{ env.BQ_DATASET_ID }} --project=${{ env.PROJECT_ID }} --location=US
         else
           echo "BigQuery dataset ${{ env.BQ_DATASET_ID }} already exists"
         fi
 
-    - name: Setup IAM permissions for BigQuery
+    - name: Set BigQuery Permissions
       run: |
-        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(serviceAccountEmail)")
+        # Get the service account email from the deployed Cloud Run service
+        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format="value(serviceAccountEmail)")
+          
+        echo "Setting BigQuery permissions for service account: $SERVICE_ACCOUNT"
         
         # Grant BigQuery Data Editor role to the service account
-        echo "Setting up BigQuery permissions for service account: $SERVICE_ACCOUNT"
         gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
           --member="serviceAccount:$SERVICE_ACCOUNT" \
           --role="roles/bigquery.dataEditor"
         
-        # Also grant BigQuery Job User role to allow creating tables
+        # Grant BigQuery Job User role to allow creating tables
         gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
           --member="serviceAccount:$SERVICE_ACCOUNT" \
           --role="roles/bigquery.jobUser"
 
-    - name: Create Cloud Scheduler job to keep service alive
+    - name: Create Cloud Scheduler job for keeping service alive
       run: |
-        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(status.url)")
-        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format="value(serviceAccountEmail)")
+        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format="value(status.url)")
         
-        # Check if scheduler job already exists
-        if gcloud scheduler jobs describe keep-${{ env.SERVICE_NAME }}-alive --location=${{ env.REGION }} 2>/dev/null; then
-          echo "Updating existing scheduler job..."
+        # Get the service account
+        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --format="value(serviceAccountEmail)")
+        
+        # Create or update Cloud Scheduler job
+        if gcloud scheduler jobs describe keep-${{ env.SERVICE_NAME }}-alive \
+           --location ${{ env.REGION }} &> /dev/null; then
+          
           gcloud scheduler jobs update http keep-${{ env.SERVICE_NAME }}-alive \
-            --location=${{ env.REGION }} \
+            --location ${{ env.REGION }} \
             --schedule="*/15 * * * *" \
-            --uri="$SERVICE_URL" \
+            --uri="${SERVICE_URL}/health" \
             --http-method=GET \
-            --oidc-service-account-email=$SERVICE_ACCOUNT
+            --oidc-service-account-email="${SERVICE_ACCOUNT}"
         else
-          echo "Creating new scheduler job..."
           gcloud scheduler jobs create http keep-${{ env.SERVICE_NAME }}-alive \
-            --location=${{ env.REGION }} \
+            --location ${{ env.REGION }} \
             --schedule="*/15 * * * *" \
-            --uri="$SERVICE_URL" \
+            --uri="${SERVICE_URL}/health" \
             --http-method=GET \
-            --oidc-service-account-email=$SERVICE_ACCOUNT
+            --oidc-service-account-email="${SERVICE_ACCOUNT}"
         fi
-
-    - name: Print deployment information
-      run: |
-        echo "Service URL: $(gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format='value(status.url)')"
-        echo "BigQuery Dataset: ${{ env.BQ_DATASET_ID }}"
-        echo "Base Table ID: ${{ env.BQ_TABLE_ID }}_<symbol>"
-        echo "Cloud Scheduler: keep-${{ env.SERVICE_NAME }}-alive (runs every 15 minutes)"

@@ -1,22 +1,20 @@
-FROM python:3.9-slim
+FROM node:18-slim
 
-# Set the working directory
+# Create app directory
 WORKDIR /app
 
-# Copy the requirements file
-COPY requirements.txt .
+# Copy package.json and package-lock.json
+COPY package*.json ./
 
-# Install the dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install app dependencies
+RUN npm ci --only=production
 
-# Copy the application code
-COPY src/ ./src/
+# Copy app source
+COPY . .
 
-# Create directory for data
-RUN mkdir -p /tmp/forex_data
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=8080
 
-# Set the environment variable for the Python output
-ENV PYTHONUNBUFFERED=1
-
-# Command to run the application
-CMD ["python", "src/main.py"]
+# Start the application
+CMD [ "node", "src/index.js" ]
