@@ -1,0 +1,11 @@
+__dockerignore__
+*.pyc
+__pycache__/
+.env
+*.csv
+*.log
+*.git
+*.gitignore
+Dockerfile
+README.md
+cloudbuild.yaml
