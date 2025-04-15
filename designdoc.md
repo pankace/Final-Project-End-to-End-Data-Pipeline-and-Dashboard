@@ -1,114 +1,53 @@
-Plan to Set Up MT5 as a WebSocket Server & Stream Data via Cloud Pub/Sub
-1. Set Up MT5 on a Google Cloud VM
-Create a Windows Server VM on Google Cloud Compute Engine.
+if you want to deploy via direct connection use the deploy via direct connection python file on the server side 
 
-	34.87.87.53 
-  uue9z0uY}l2fZ%*
-# rdp cred /]0R:WHgrn2KMR6
-```hcl
-# This code is compatible with Terraform 4.25.0 and versions that are backwards compatible to 4.25.0.
-# For information about validating this Terraform code, see https://developer.hashicorp.com/terraform/tutorials/gcp-get-started/google-cloud-platform-build#format-and-validate-the-configuration
+if you want to deploy via cloud fuction use the cloud fuction file and deploly that on to cloud fuction and then run it from there 
+1 create big qury database 
+```sql 
+-- Create dataset
+CREATE DATASET IF NOT EXISTS mt5_trading;
 
-resource "google_compute_instance" "emty5instance-20250403-201045" {
-  boot_disk {
-    auto_delete = true
-    device_name = "instance-20250403-201045"
+-- Create positions table
+CREATE TABLE IF NOT EXISTS mt5_trading.positions (
+    timestamp TIMESTAMP,
+    trade_id INT64,
+    symbol STRING,
+    type STRING,
+    volume FLOAT64,
+    price FLOAT64,
+    profit FLOAT64,
+    sl FLOAT64,
+    tp FLOAT64
+);
 
-    initialize_params {
-      image = "projects/windows-cloud/global/images/windows-server-2025-dc-v20250321"
-      size  = 50
-      type  = "pd-balanced"
-    }
+-- Create transactions table
+CREATE TABLE IF NOT EXISTS mt5_trading.transactions (
+    timestamp TIMESTAMP,
+    transaction_id INT64,
+    symbol STRING,
+    type STRING,
+    volume FLOAT64,
+    price FLOAT64,
+    commission FLOAT64,
+    swap FLOAT64,
+    profit FLOAT64
+);
 
-    mode = "READ_WRITE"
-  }
-
-  can_ip_forward      = false
-  deletion_protection = false
-  enable_display      = false
-
-  labels = {
-    goog-ec-src           = "vm_add-tf"
-    goog-ops-agent-policy = "v2-x86-template-1-4-0"
-  }
-
-  machine_type = "e2-medium"
-
-  metadata = {
-    enable-osconfig = "TRUE"
-  }
-
-  name = "emty5instance-20250403-201045"
-
-  network_interface {
-    access_config {
-      network_tier = "PREMIUM"
-    }
-
-    queue_count = 0
-    stack_type  = "IPV4_ONLY"
-    subnetwork  = "projects/numeric-ocean-454111-i6/regions/us-central1/subnetworks/default"
-  }
-
-  scheduling {
-    automatic_restart   = true
-    on_host_maintenance = "MIGRATE"
-    preemptible         = false
-    provisioning_model  = "STANDARD"
-  }
-
-  service_account {
-    email  = "584325564944-compute@developer.gserviceaccount.com"
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-  }
-
-  shielded_instance_config {
-    enable_integrity_monitoring = true
-    enable_secure_boot          = false
-    enable_vtpm                 = true
-  }
-
-  zone = "us-central1-f"
-}
-
-module "ops_agent_policy" {
-  source          = "github.com/terraform-google-modules/terraform-google-cloud-operations/modules/ops-agent-policy"
-  project         = "numeric-ocean-454111-i6"
-  zone            = "us-central1-f"
-  assignment_id   = "goog-ops-agent-v2-x86-template-1-4-0-us-central1-f"
-  agents_rule = {
-    package_state = "installed"
-    version = "latest"
-  }
-  instance_filter = {
-    all = false
-    inclusion_labels = [{
-      labels = {
-        goog-ops-agent-policy = "v2-x86-template-1-4-0"
-      }
-    }]
-  }
-}
+-- Create price updates table
+CREATE TABLE IF NOT EXISTS mt5_trading.price_updates (
+    timestamp TIMESTAMP,
+    symbol STRING,
+    bid FLOAT64,
+    ask FLOAT64,
+    spread FLOAT64
+);
 ```
+deploy cloud fuction 
+gcloud functions deploy process_mt5_data \
+    --runtime python310 \
+    --trigger-http \
+    --allow-unauthenticated \
+    --entry-point process_mt5_data
 
-Install MetaTrader 5 and enable API access.
+run via cloud function 
 
-Use the MT5 Python API (MetaTrader5 package) to pull price data.
-
-2. Build a WebSocket Server on the VM
-Use Python (websockets library) to create a WebSocket server.
-
-Fetch real-time price data from MT5 API and send it over WebSocket.
-
-3. Publish Price Data to Cloud Pub/Sub
-Deploy a Cloud Pub/Sub topic to handle incoming price updates.
-
-Modify the WebSocket server to publish messages to Cloud Pub/Sub.
-
-4. Subscribe to Data Streams
-Create a Cloud Function or a Cloud Run service that subscribes to the topic and processes price updates.
-
-Store the data in BigQuery or Cloud Storage for analysis.
-
-
-
+python cloud_client.py --server ws://your-mt5-server:8765 --cloud-function https://your-cloud-function-url
