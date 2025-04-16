@@ -241,12 +241,12 @@ resource "google_cloudfunctions2_function" "http_function" {
     service_account_email          = var.service_account_email
   }
 }
-
 # HTTP Function IAM
 resource "google_cloud_run_service_iam_member" "http_invoker" {
   count = var.create_http_function ? 1 : 0
-  location = google_cloudfunctions2_function.http_function.location
-  service  = google_cloudfunctions2_function.http_function.name
+  
+  location = google_cloudfunctions2_function.http_function[0].location
+  service  = google_cloudfunctions2_function.http_function[0].name
   role     = "roles/run.invoker"
   member   = "allUsers"  # Makes the function publicly accessible
 }

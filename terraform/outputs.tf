@@ -20,14 +20,14 @@ output "pubsub_topic_name" {
 
 output "cloud_function_http_url" {
   description = "The HTTPS URL for the HTTP-triggered Cloud Function"
-  # Use the correct resource type and attribute for Gen 2 functions
-  value = google_cloudfunctions2_function.http_function.service_config[0].uri
+  # Add index to the function reference
+  value = var.create_http_function ? google_cloudfunctions2_function.http_function[0].service_config[0].uri : null
 }
 
 output "cloud_function_pubsub_name" {
   description = "The name of the Pub/Sub-triggered Cloud Function"
-  # Use the correct resource type
-  value = google_cloudfunctions2_function.pubsub_function.name
+  # Add index to the function reference
+  value = var.create_pubsub_function ? google_cloudfunctions2_function.pubsub_function[0].name : null
 }
 
 output "cloud_function_bucket_name" {
