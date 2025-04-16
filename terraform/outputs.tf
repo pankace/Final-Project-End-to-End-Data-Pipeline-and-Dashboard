@@ -1,23 +1,36 @@
-output "bigquery_dataset_id" {
-  value = google_bigquery_dataset.mt5_trading.dataset_id
+output "project_id" {
+  description = "The GCP project ID"
+  value       = var.project_id
 }
 
-output "bigquery_positions_table_id" {
-  value = google_bigquery_table.positions.table_id
+output "region" {
+  description = "The GCP region"
+  value       = var.region
 }
 
-output "bigquery_transactions_table_id" {
-  value = google_bigquery_table.transactions.table_id
+output "bigquery_dataset" {
+  description = "The BigQuery dataset ID"
+  value       = google_bigquery_dataset.mt5_trading.dataset_id
 }
 
-output "bigquery_prices_table_id" {
-  value = google_bigquery_table.price_updates.table_id
+output "pubsub_topic_name" {
+  description = "The name of the Pub/Sub topic"
+  value       = google_pubsub_topic.mt5_topic.name
 }
 
 output "cloud_function_http_url" {
-  value = google_cloudfunctions_function.http_function.https_trigger_url
+  description = "The HTTPS URL for the HTTP-triggered Cloud Function"
+  # Use the correct resource type and attribute for Gen 2 functions
+  value = google_cloudfunctions2_function.http_function.service_config[0].uri
 }
 
 output "cloud_function_pubsub_name" {
-  value = google_cloudfunctions_function.pubsub_function.name
+  description = "The name of the Pub/Sub-triggered Cloud Function"
+  # Use the correct resource type
+  value = google_cloudfunctions2_function.pubsub_function.name
+}
+
+output "cloud_function_bucket_name" {
+  description = "The name of the GCS bucket storing function source code"
+  value       = google_storage_bucket.function_bucket.name
 }
