@@ -227,7 +227,7 @@ resource "google_cloudfunctions2_function" "http_function" {
     source {
       storage_source {
         bucket = google_storage_bucket.function_bucket[0].name
-        object = google_storage_bucket_object.http_function_zip.name
+        object = google_storage_bucket_object.http_function_zip[0].name  # Add [0] index here
       }
     }
   }
@@ -270,7 +270,7 @@ resource "google_cloudfunctions2_function" "pubsub_function" {
     source {
       storage_source {
         bucket = google_storage_bucket.function_bucket[0].name
-        object = google_storage_bucket_object.pubsub_function_zip.name
+        object = google_storage_bucket_object.pubsub_function_zip[0].name  # Add [0] index here
       }
     }
   }
