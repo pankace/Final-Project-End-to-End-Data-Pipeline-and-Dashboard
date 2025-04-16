@@ -1,4 +1,4 @@
-name: Deploy MT5 to BigQuery Pipeline
+name: Deploy MT5 to BigQuery Cloud Function
 
 on:
   push:
@@ -17,7 +17,7 @@ env:
 
 jobs:
   deploy-infrastructure:
-    name: Deploy Infrastructure with Terraform
+    name: Deploy Cloud Function with Terraform
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -63,61 +63,10 @@ jobs:
         run: |
           terraform apply -auto-approve tfplan
           
-      - name: Store Function URL as artifact
+      - name: Show Function URL
         working-directory: ./terraform
         run: |
-          terraform output -raw mt5_function_url > function_url.txt
-          
-      - name: Upload Function URL artifact
-        uses: actions/upload-artifact@v4  # Updated from v3 to v4
-        with:
-          name: function-url
-          path: ./terraform/function_url.txt
-          retention-days: 7
-
-  build-backend:
-    name: Build and Test Backend
-    runs-on: ubuntu-latest
-    needs: deploy-infrastructure
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4  # Updated from v3 to v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-          cache: 'pip'
-          
-      - name: Install backend dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt || echo "No requirements.txt found, creating it"
-          pip install websockets==10.4 python-dotenv==0.21.0 requests==2.28.2 backoff==2.2.1 google-cloud-bigquery==3.11.4
-          
-      - name: Download function URL
-        uses: actions/download-artifact@v4  # Updated from v3 to v4
-        with:
-          name: function-url
-          
-      - name: Create .env file for local testing
-        run: |
-          echo "# MT5 to BigQuery Pipeline Configuration" > backend/.env
-          echo "MT5_WS_URL=ws://localhost:8765" >> backend/.env
-          echo "CLOUD_FUNCTION_URL=$(cat function_url.txt)" >> backend/.env
-          echo "MT5_SYMBOLS=EURUSD,GBPUSD,USDJPY,XAUUSD" >> backend/.env
-          echo "BQ_DATASET=mt5_trading" >> backend/.env
-          echo "BQ_POSITIONS_TABLE=positions" >> backend/.env
-          echo "BQ_TRANSACTIONS_TABLE=transactions" >> backend/.env
-          echo "BQ_PRICES_TABLE=price_updates" >> backend/.env
-          
-      - name: Display deployment info
-        run: |
           echo "MT5 to BigQuery function URL:"
-          cat function_url.txt
+          terraform output mt5_function_url
           echo ""
-          echo "To connect your MT5 client to BigQuery:"
-          echo "1. Configure .env file with CLOUD_FUNCTION_URL=$(cat function_url.txt)"
-          echo "2. Run the cloudfunction_client.py script:"
-          echo "   python backend/cloudfunction_client.py"
+          echo "Deployment complete! Use the function URL above to connect your MT5 client."
