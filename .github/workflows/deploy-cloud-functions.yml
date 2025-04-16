@@ -106,6 +106,23 @@ jobs:
         terraform init \
           -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
           -backend-config="prefix=terraform/state"
+          
+    # Conditionally create terraform.tfvars file based on what exists
+    - name: Create terraform.tfvars
+      working-directory: terraform
+      run: |
+        cat > terraform.tfvars << EOF
+        project_id = "${{ env.PROJECT_ID }}"
+        region = "${{ env.REGION }}"
+        service_account_email = "${{ env.SERVICE_ACCOUNT_EMAIL }}"
+        create_bigquery_dataset = ${{ env.BQ_DATASET_EXISTS == 'false' }}
+        create_storage_bucket = ${{ env.BUCKET_EXISTS == 'false' }}
+        create_pubsub_topic = ${{ env.TOPIC_EXISTS == 'false' }}
+        create_http_function = ${{ env.HTTP_FUNCTION_EXISTS == 'false' }}
+        create_pubsub_function = ${{ env.PUBSUB_FUNCTION_EXISTS == 'false' }}
+        EOF
+        
+        cat terraform.tfvars
 
     - name: Import existing resources and handle failures
       working-directory: terraform
@@ -143,22 +160,7 @@ jobs:
       working-directory: terraform
       run: terraform validate
 
-    # Conditionally create terraform.tfvars file based on what exists
-    - name: Create terraform.tfvars
-      working-directory: terraform
-      run: |
-        cat > terraform.tfvars << EOF
-        project_id = "${{ env.PROJECT_ID }}"
-        region = "${{ env.REGION }}"
-        service_account_email = "${{ env.SERVICE_ACCOUNT_EMAIL }}"
-        create_bigquery_dataset = ${{ env.BQ_DATASET_EXISTS == 'false' }}
-        create_storage_bucket = ${{ env.BUCKET_EXISTS == 'false' }}
-        create_pubsub_topic = ${{ env.TOPIC_EXISTS == 'false' }}
-        create_http_function = ${{ env.HTTP_FUNCTION_EXISTS == 'false' }}
-        create_pubsub_function = ${{ env.PUBSUB_FUNCTION_EXISTS == 'false' }}
-        EOF
-        
-        cat terraform.tfvars
+
 
     - name: Terraform Plan
       working-directory: terraform
