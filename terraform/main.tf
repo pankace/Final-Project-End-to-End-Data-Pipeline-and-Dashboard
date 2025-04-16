@@ -192,29 +192,16 @@ data "archive_file" "pubsub_function_source" {
 # Upload the function source to the bucket
 resource "google_storage_bucket_object" "http_function_zip" {
   name   = "http_function-${data.archive_file.http_function_source.output_md5}.zip"
-  bucket = google_storage_bucket.function_bucket.name
+  bucket = google_storage_bucket.function_bucket[0].name
   source = data.archive_file.http_function_source.output_path
 }
 
 resource "google_storage_bucket_object" "pubsub_function_zip" {
   name   = "pubsub_function-${data.archive_file.pubsub_function_source.output_md5}.zip"
-  bucket = google_storage_bucket.function_bucket.name
+  bucket = google_storage_bucket.function_bucket[0].name
   source = data.archive_file.pubsub_function_source.output_path
 }
-source {
-  storage_source {
-    bucket = google_storage_bucket.function_bucket[0].name  // Add [0] index
-    object = google_storage_bucket_object.http_function_zip.name
-  }
-}
 
-// Update the pubsub topic reference in the event trigger
-event_trigger {
-  trigger_region = var.region
-  event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
-  pubsub_topic   = google_pubsub_topic.mt5_topic[0].id  // Add [0] index
-  retry_policy   = "RETRY_POLICY_RETRY"
-}
 resource "google_pubsub_topic" "mt5_topic" {
   name = "mt5-trading-topic"
 }
@@ -230,7 +217,7 @@ resource "google_cloudfunctions2_function" "http_function" {
     entry_point = "process_mt5_data"
     source {
       storage_source {
-        bucket = google_storage_bucket.function_bucket.name
+        bucket = google_storage_bucket.function_bucket[0].name
         object = google_storage_bucket_object.http_function_zip.name
       }
     }
@@ -270,7 +257,7 @@ resource "google_cloudfunctions2_function" "pubsub_function" {
     entry_point = "pubsub_function"
     source {
       storage_source {
-        bucket = google_storage_bucket.function_bucket.name
+        bucket = google_storage_bucket.function_bucket[0].name
         object = google_storage_bucket_object.pubsub_function_zip.name
       }
     }
@@ -291,7 +278,7 @@ resource "google_cloudfunctions2_function" "pubsub_function" {
   event_trigger {
     trigger_region = var.region
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
-    pubsub_topic   = google_pubsub_topic.mt5_topic.id
+    pubsub_topic   = google_pubsub_topic.mt5_topic[0].id
     retry_policy   = "RETRY_POLICY_RETRY"
   }
 }
