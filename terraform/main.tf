@@ -147,27 +147,125 @@ resource "google_bigquery_table" "price_updates" {
   ])
 }
 
+# Create a storage bucket for the function source code
+resource "google_storage_bucket" "function_bucket" {
+  name     = "${var.project_id}-cloud-functions"
+  location = var.region
+  uniform_bucket_level_access = true
+}
+
+# Create a zip archive of the function source
+data "archive_file" "http_function_source" {
+  type        = "zip"
+  output_path = "${path.module}/http_function.zip"
+  
+  source_dir = "../function_deploy/http_function"
+}
+
+data "archive_file" "pubsub_function_source" {
+  type        = "zip"
+  output_path = "${path.module}/pubsub_function.zip"
+  
+  source_dir = "../function_deploy/pubsub_function"
+}
+
+# Upload the function source to the bucket
+resource "google_storage_bucket_object" "http_function_zip" {
+  name   = "http_function-${data.archive_file.http_function_source.output_md5}.zip"
+  bucket = google_storage_bucket.function_bucket.name
+  source = data.archive_file.http_function_source.output_path
+}
+
+resource "google_storage_bucket_object" "pubsub_function_zip" {
+  name   = "pubsub_function-${data.archive_file.pubsub_function_source.output_md5}.zip"
+  bucket = google_storage_bucket.function_bucket.name
+  source = data.archive_file.pubsub_function_source.output_path
+}
+
 resource "google_pubsub_topic" "mt5_topic" {
-  name = "mt5_topic"
+  name = "mt5-trading-topic"
 }
 
-resource "google_cloudfunctions_function" "http_function" {
-  name        = "http_function"
-  runtime     = "python39"
-  entry_point = "process_mt5_data"
-  source_archive_bucket = var.source_bucket
-  source_archive_object = var.source_object
-  trigger_http = true
-}
+# HTTP Function (Gen 2)
+resource "google_cloudfunctions2_function" "http_function" {
+  name        = "mt5-http-function"
+  location    = var.region
+  description = "HTTP function for processing MT5 trading data"
 
-resource "google_cloudfunctions_function" "pubsub_function" {
-  name        = "pubsub_function"
-  runtime     = "python39"
-  entry_point = "process_mt5_pubsub"
-  source_archive_bucket = var.source_bucket
-  source_archive_object = var.source_object
-  event_trigger {
-    event_type = "google.pubsub.topic.publish"
-    resource   = google_pubsub_topic.mt5_topic.id
+  build_config {
+    runtime     = "python310"
+    entry_point = "process_mt5_data"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.function_bucket.name
+        object = google_storage_bucket_object.http_function_zip.name
+      }
+    }
   }
+
+  service_config {
+    max_instance_count = 5
+    min_instance_count = 0
+    available_memory   = "${var.cloud_function_memory}M"
+    timeout_seconds    = var.cloud_function_timeout
+    environment_variables = {
+      PROJECT_ID = var.project_id
+      BQ_DATASET = var.bigquery_dataset
+    }
+    ingress_settings               = "ALLOW_ALL"
+    all_traffic_on_latest_revision = true
+    service_account_email          = var.service_account_email
+  }
+}
+
+# HTTP Function IAM
+resource "google_cloud_run_service_iam_member" "http_invoker" {
+  location = google_cloudfunctions2_function.http_function.location
+  service  = google_cloudfunctions2_function.http_function.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"  # Makes the function publicly accessible
+}
+
+# Pub/Sub Function (Gen 2)
+resource "google_cloudfunctions2_function" "pubsub_function" {
+  name        = "mt5-pubsub-function"
+  location    = var.region
+  description = "Pub/Sub function for processing MT5 trading data"
+
+  build_config {
+    runtime     = "python310"
+    entry_point = "pubsub_function"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.function_bucket.name
+        object = google_storage_bucket_object.pubsub_function_zip.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count = 10
+    min_instance_count = 0
+    available_memory   = "${var.cloud_function_memory}M"
+    timeout_seconds    = var.cloud_function_timeout
+    environment_variables = {
+      PROJECT_ID = var.project_id
+      BQ_DATASET = var.bigquery_dataset
+    }
+    service_account_email = var.service_account_email
+  }
+
+  event_trigger {
+    trigger_region = var.region
+    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic   = google_pubsub_topic.mt5_topic.id
+    retry_policy   = "RETRY_POLICY_RETRY"
+  }
+}
+
+# Grant BigQuery access to the service account
+resource "google_project_iam_member" "function_bigquery_access" {
+  project = var.project_id
+  role    = "roles/bigquery.dataEditor"
+  member  = "serviceAccount:${var.service_account_email}"
 }

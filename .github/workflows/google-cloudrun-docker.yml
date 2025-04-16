@@ -1,24 +1,24 @@
-name: Deploy JavaScript MT5 WebSocket Client to Google Cloud Run
+name: Deploy MT5 Cloud Functions
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'src/**'
+      - 'terraform/**'
+      - '.github/workflows/deploy-cloud-functions.yml'
   workflow_dispatch:  # Allows manual triggering
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: mt5-websocket-client-js
   REGION: us-central1
-  MT5_SERVER_URL: ws://34.87.87.53:8765
-  FOREX_SYMBOLS: XAUUSD,EURUSD,GBPUSD,USDTHB
-  STORAGE_TYPE: bigquery
-  BQ_DATASET_ID: mt5_data
-  BQ_TABLE_ID: tabletabletable_js
+  SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
+  TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
 
 jobs:
-  setup-build-deploy:
-    name: Setup, Build, and Deploy
+  deploy:
+    name: Deploy Cloud Functions
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
@@ -28,524 +28,99 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
+    - name: Setup Python
+      uses: actions/setup-python@v4
       with:
-        node-version: '18'
+        python-version: '3.10'
 
-    # Authentication - use credentials_json instead of workload identity provider
-    - id: 'auth'
-      name: 'Authenticate to Google Cloud'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install google-cloud-bigquery google-cloud-pubsub functions-framework
+
+    - name: Authenticate to Google Cloud
       uses: 'google-github-actions/auth@v1'
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
     - name: Set up Cloud SDK
       uses: 'google-github-actions/setup-gcloud@v1'
+      with:
+        install_components: 'gcloud beta'
+
+    - name: Prepare function deployment directories
+      run: |
+        # Create directories for function deployment
+        mkdir -p function_deploy/http_function/src function_deploy/pubsub_function/src
+        
+        # HTTP Function
+        cp src/cloud_functions/http_function.py function_deploy/http_function/main.py
+        echo "google-cloud-bigquery>=3.3.5" > function_deploy/http_function/requirements.txt
+        echo "functions-framework>=3.0.0" >> function_deploy/http_function/requirements.txt
+        
+        # Pub/Sub Function
+        cp src/cloud_functions/pubsub_function.py function_deploy/pubsub_function/main.py
+        echo "google-cloud-bigquery>=3.3.5" > function_deploy/pubsub_function/requirements.txt
+        echo "functions-framework>=3.0.0" >> function_deploy/pubsub_function/requirements.txt
+        
+        # Copy shared code
+        mkdir -p function_deploy/http_function/src/connectors function_deploy/http_function/src/processors function_deploy/http_function/src/config
+        mkdir -p function_deploy/pubsub_function/src/connectors function_deploy/pubsub_function/src/processors function_deploy/pubsub_function/src/config
+        
+        # Copy connectors
+        cp -r src/connectors/* function_deploy/http_function/src/connectors/
+        cp -r src/connectors/* function_deploy/pubsub_function/src/connectors/
+        
+        # Copy processors
+        cp -r src/processors/* function_deploy/http_function/src/processors/
+        cp -r src/processors/* function_deploy/pubsub_function/src/processors/
+        
+        # Copy config
+        cp -r src/config/* function_deploy/http_function/src/config/
+        cp -r src/config/* function_deploy/pubsub_function/src/config/
+        
+        # Create __init__.py files
+        touch function_deploy/http_function/src/__init__.py
+        touch function_deploy/http_function/src/connectors/__init__.py
+        touch function_deploy/http_function/src/processors/__init__.py
+        touch function_deploy/http_function/src/config/__init__.py
+        
+        touch function_deploy/pubsub_function/src/__init__.py
+        touch function_deploy/pubsub_function/src/connectors/__init__.py
+        touch function_deploy/pubsub_function/src/processors/__init__.py
+        touch function_deploy/pubsub_function/src/config/__init__.py
+        
+        # Update settings.py with environment variables
+        sed -i "s/BQ_PROJECT_ID = \"your-project-id\"/BQ_PROJECT_ID = os.environ.get(\"PROJECT_ID\", \"${{ env.PROJECT_ID }}\")/" function_deploy/http_function/src/config/settings.py
+        sed -i "s/BQ_PROJECT_ID = \"your-project-id\"/BQ_PROJECT_ID = os.environ.get(\"PROJECT_ID\", \"${{ env.PROJECT_ID }}\")/" function_deploy/pubsub_function/src/config/settings.py
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.0.0
+        terraform_wrapper: false
+
+    - name: Terraform Init
+      working-directory: terraform
+      run: |
+        terraform init \
+          -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
+          -backend-config="prefix=terraform/state"
+
+    - name: Terraform Validate
+      working-directory: terraform
+      run: terraform validate
+
+    - name: Terraform Plan
+      working-directory: terraform
+      run: terraform plan -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
+
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
       
-    # Create Artifact Registry repository if it doesn't exist
-    - name: Create Artifact Registry repository
+    - name: Output deployed function details
+      working-directory: terraform
       run: |
-        if ! gcloud artifacts repositories describe ${{ env.SERVICE_NAME }} --location=${{ env.REGION }} > /dev/null 2>&1; then
-          echo "Creating Artifact Registry repository: ${{ env.SERVICE_NAME }}"
-          gcloud artifacts repositories create ${{ env.SERVICE_NAME }} \
-            --repository-format=docker \
-            --location=${{ env.REGION }} \
-            --description="MT5 WebSocket Client repository"
-        else
-          echo "Artifact Registry repository ${{ env.SERVICE_NAME }} already exists"
-        fi
-
-    - name: Configure Docker for Artifact Registry
-      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-    # Create directory structure and files if they don't exist
-    - name: Setup JavaScript project
-      run: |
-        if [ ! -d "mt5-websocket-client-js" ]; then
-          echo "Creating JavaScript project structure"
-          mkdir -p mt5-websocket-client-js/src/utils
-          
-          # Create package.json
-          cat > mt5-websocket-client-js/package.json << EOL
-        {
-          "name": "mt5-websocket-client",
-          "version": "1.0.0",
-          "description": "WebSocket client for MT5 forex data, streaming to BigQuery",
-          "main": "src/index.js",
-          "scripts": {
-            "start": "node src/index.js",
-            "dev": "nodemon src/index.js",
-            "test": "echo \"Error: no test specified\" && exit 1"
-          },
-          "dependencies": {
-            "@google-cloud/bigquery": "^7.3.0",
-            "dotenv": "^16.3.1",
-            "express": "^4.18.2",
-            "pino": "^8.16.2",
-            "pino-pretty": "^10.2.3",
-            "ws": "^8.14.2"
-          },
-          "engines": {
-            "node": ">=18"
-          }
-        }
-        EOL
-          
-          # Create index.js
-          cat > mt5-websocket-client-js/src/index.js << EOL
-        require('dotenv').config();
-        const WebSocket = require('ws');
-        const express = require('express');
-        const { logger } = require('./utils/logger');
-        const { saveToBigQuery } = require('./utils/storage');
-
-        // Express app for health checks
-        const app = express();
-        const PORT = process.env.PORT || 8080;
-
-        // Configuration from environment variables
-        const MT5_SERVER_URL = process.env.MT5_SERVER_URL || 'ws://34.87.87.53:8765';
-        const FOREX_SYMBOLS = (process.env.FOREX_SYMBOLS || 'EURUSD,GBPUSD,USDJPY').split(',');
-        const STORAGE_TYPE = (process.env.STORAGE_TYPE || 'bigquery').toLowerCase();
-        const BQ_DATASET_ID = process.env.BQ_DATASET_ID;
-        const BQ_TABLE_ID = process.env.BQ_TABLE_ID || 'forex_prices';
-
-        // Flag to control the running state
-        let running = true;
-        let wsConnection = null;
-        let reconnectTimeout = null;
-
-        // Health check endpoint
-        app.get('/health', (req, res) => {
-          res.status(200).json({
-            status: 'ok',
-            connectionStatus: wsConnection && wsConnection.readyState === WebSocket.OPEN ? 'connected' : 'disconnected',
-            serverUrl: MT5_SERVER_URL,
-            symbols: FOREX_SYMBOLS,
-            storageType: STORAGE_TYPE
-          });
-        });
-
-        // Start HTTP server for health checks
-        const server = app.listen(PORT, () => {
-          logger.info(\`HTTP server listening on port \${PORT}\`);
-        });
-
-        // Function to handle process termination
-        function handleTermination() {
-          logger.info('Received termination signal. Starting graceful shutdown...');
-          running = false;
-          
-          // Clear any pending reconnect
-          if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-          }
-          
-          // Close WebSocket connection if it exists
-          if (wsConnection) {
-            try {
-              // Send unsubscribe message if connection is open
-              if (wsConnection.readyState === WebSocket.OPEN) {
-                const unsubscribeMessage = {
-                  type: 'subscription',
-                  action: 'unsubscribe',
-                  symbols: FOREX_SYMBOLS
-                };
-                wsConnection.send(JSON.stringify(unsubscribeMessage));
-                logger.info('Unsubscribed from symbols');
-              }
-              
-              // Close the connection
-              wsConnection.close();
-            } catch (err) {
-              logger.error(\`Error during WebSocket shutdown: \${err.message}\`);
-            }
-          }
-          
-          // Close HTTP server
-          server.close(() => {
-            logger.info('HTTP server closed');
-            process.exit(0);
-          });
-          
-          // Force exit if not closed within 3 seconds
-          setTimeout(() => {
-            logger.warn('Forcing exit after timeout');
-            process.exit(1);
-          }, 3000);
-        }
-
-        // Register signal handlers
-        process.on('SIGINT', handleTermination);
-        process.on('SIGTERM', handleTermination);
-
-        // Function to subscribe to forex symbols
-        function subscribeToSymbols(ws) {
-          const subscriptionMessage = {
-            type: 'subscription',
-            action: 'subscribe',
-            symbols: FOREX_SYMBOLS
-          };
-          
-          ws.send(JSON.stringify(subscriptionMessage));
-          logger.info(\`Subscribed to symbols: \${FOREX_SYMBOLS.join(', ')}\`);
-        }
-
-        // Function to process price updates
-        async function processPriceUpdate(data) {
-          const symbol = data.symbol;
-          const timestamp = data.timestamp;
-          const bid = data.bid;
-          const ask = data.ask;
-          const spread = data.spread || (ask - bid);
-          
-          if (STORAGE_TYPE === 'bigquery' && BQ_DATASET_ID) {
-            // Prepare data for BigQuery
-            const bqRecord = {
-              timestamp: timestamp,
-              symbol: symbol,
-              bid: bid,
-              ask: ask,
-              spread: spread
-            };
-            
-            try {
-              await saveToBigQuery(bqRecord, BQ_DATASET_ID, \`\${BQ_TABLE_ID}_\${symbol.toLowerCase()}\`);
-              logger.debug(\`Saved \${symbol} price data to BigQuery \${BQ_DATASET_ID}.\${BQ_TABLE_ID}_\${symbol.toLowerCase()}\`);
-            } catch (err) {
-              logger.error(\`Error saving to BigQuery: \${err.message}\`);
-            }
-          } else {
-            logger.warn(\`Storage type \${STORAGE_TYPE} not configured or supported\`);
-          }
-        }
-
-        // Function to connect to MT5 WebSocket server
-        function connectToMT5Server() {
-          if (!running) return;
-          
-          logger.info(\`Connecting to MT5 WebSocket server at \${MT5_SERVER_URL}\`);
-          
-          // Create new WebSocket connection
-          const ws = new WebSocket(MT5_SERVER_URL);
-          wsConnection = ws;
-          
-          // Initial reconnect delay in milliseconds
-          let reconnectDelay = 5000;
-          const maxReconnectDelay = 60000;
-          
-          // WebSocket event handlers
-          ws.on('open', () => {
-            logger.info('Connected to MT5 WebSocket server');
-            // Reset reconnect delay on successful connection
-            reconnectDelay = 5000;
-            // Subscribe to symbols
-            subscribeToSymbols(ws);
-          });
-          
-          ws.on('message', async (message) => {
-            try {
-              const data = JSON.parse(message.toString());
-              
-              // Handle different types of messages
-              if (data.type === 'price_update') {
-                await processPriceUpdate(data);
-              } else if (data.type === 'subscription_confirmation') {
-                logger.info(\`Subscription confirmed for: \${data.symbols.join(', ')}\`);
-              } else if (data.type === 'error') {
-                logger.error(\`Server error: \${data.message}\`);
-              } else {
-                logger.debug(\`Received other message: \${JSON.stringify(data)}\`);
-              }
-            } catch (err) {
-              logger.error(\`Error processing message: \${err.message}\`);
-            }
-          });
-          
-          ws.on('error', (error) => {
-            logger.error(\`WebSocket error: \${error.message}\`);
-          });
-          
-          ws.on('close', (code, reason) => {
-            logger.warn(\`WebSocket connection closed. Code: \${code}, Reason: \${reason}\`);
-            wsConnection = null;
-            
-            // Attempt to reconnect if still running
-            if (running) {
-              logger.info(\`Reconnecting in \${reconnectDelay / 1000} seconds...\`);
-              
-              // Set timeout for reconnection
-              reconnectTimeout = setTimeout(() => {
-                // Implement exponential backoff with maximum value
-                reconnectDelay = Math.min(reconnectDelay * 1.5, maxReconnectDelay);
-                connectToMT5Server();
-              }, reconnectDelay);
-            }
-          });
-        }
-
-        // Validate required environment variables and start the client
-        async function main() {
-          try {
-            // Validate required environment variables
-            if (STORAGE_TYPE === 'bigquery' && !BQ_DATASET_ID) {
-              logger.error('BQ_DATASET_ID is required when STORAGE_TYPE is "bigquery"');
-              process.exit(1);
-            }
-            
-            // Log startup information
-            logger.info(\`Starting MT5 WebSocket client in \${STORAGE_TYPE} mode\`);
-            logger.info(\`Server URL: \${MT5_SERVER_URL}\`);
-            logger.info(\`Forex symbols: \${FOREX_SYMBOLS.join(', ')}\`);
-            
-            // Start the connection
-            connectToMT5Server();
-            
-          } catch (err) {
-            logger.error(\`Unhandled exception: \${err.message}\`);
-            process.exit(1);
-          }
-        }
-
-        // Start the application
-        main().catch(err => {
-          logger.error(\`Fatal error: \${err.message}\`);
-          process.exit(1);
-        });
-        EOL
-          
-          # Create logger.js
-          cat > mt5-websocket-client-js/src/utils/logger.js << EOL
-        const pino = require('pino');
-
-        const logLevel = process.env.LOG_LEVEL || 'info';
-
-        const logger = pino({
-          level: logLevel,
-          transport: {
-            target: 'pino-pretty',
-            options: {
-              colorize: true
-            }
-          }
-        });
-
-        module.exports = { logger };
-        EOL
-          
-          # Create storage.js
-          cat > mt5-websocket-client-js/src/utils/storage.js << EOL
-        const { BigQuery } = require('@google-cloud/bigquery');
-        const { logger } = require('./logger');
-
-        // Initialize BigQuery client
-        const bigquery = new BigQuery();
-
-        // Cache for created tables
-        const createdTables = new Set();
-
-        /**
-         * Create BigQuery table if it doesn't exist
-         * 
-         * @param {string} datasetId BigQuery dataset ID 
-         * @param {string} tableId BigQuery table ID
-         */
-        async function ensureTableExists(datasetId, tableId) {
-          // Check if we've already created this table in this session
-          const tableKey = \`\${datasetId}.\${tableId}\`;
-          if (createdTables.has(tableKey)) {
-            return;
-          }
-          
-          const dataset = bigquery.dataset(datasetId);
-          const table = dataset.table(tableId);
-          
-          try {
-            // Check if table exists
-            const [exists] = await table.exists();
-            
-            if (!exists) {
-              // Define table schema
-              const schema = [
-                { name: 'timestamp', type: 'TIMESTAMP' },
-                { name: 'symbol', type: 'STRING' },
-                { name: 'bid', type: 'FLOAT' },
-                { name: 'ask', type: 'FLOAT' },
-                { name: 'spread', type: 'FLOAT' }
-              ];
-              
-              // Create table with time partitioning
-              const options = {
-                schema: schema,
-                timePartitioning: {
-                  type: 'DAY',
-                  field: 'timestamp'
-                }
-              };
-              
-              logger.info(\`Creating BigQuery table \${datasetId}.\${tableId}\`);
-              await dataset.createTable(tableId, options);
-              logger.info(\`Created BigQuery table \${datasetId}.\${tableId}\`);
-            }
-            
-            // Add to cache
-            createdTables.add(tableKey);
-            
-          } catch (error) {
-            logger.error(\`Error creating BigQuery table: \${error.message}\`);
-            throw error;
-          }
-        }
-
-        /**
-         * Save data to BigQuery
-         * 
-         * @param {Object} data Record to insert
-         * @param {string} datasetId BigQuery dataset ID
-         * @param {string} tableId BigQuery table ID
-         */
-        async function saveToBigQuery(data, datasetId, tableId) {
-          try {
-            // Ensure table exists
-            await ensureTableExists(datasetId, tableId);
-            
-            // Format timestamp if it's an ISO string
-            if (typeof data.timestamp === 'string') {
-              data.timestamp = new Date(data.timestamp);
-            }
-            
-            // Insert data
-            const rows = [data];
-            await bigquery.dataset(datasetId).table(tableId).insert(rows);
-            
-            return true;
-          } catch (error) {
-            logger.error(\`BigQuery insert error: \${error.message}\`);
-            throw error;
-          }
-        }
-
-        module.exports = {
-          saveToBigQuery
-        };
-        EOL
-          
-          # Create Dockerfile
-          cat > mt5-websocket-client-js/Dockerfile << EOL
-        FROM node:18-slim
-
-        # Create app directory
-        WORKDIR /app
-
-        # Copy package.json and package-lock.json
-        COPY package*.json ./
-
-        # Install app dependencies
-        RUN npm install --production
-
-        # Copy app source
-        COPY . .
-
-        # Set environment variables
-        ENV NODE_ENV=production
-        ENV PORT=8080
-
-        # Start the application
-        CMD [ "node", "src/index.js" ]
-        EOL
-          
-          # Create .dockerignore
-          cat > mt5-websocket-client-js/.dockerignore << EOL
-        node_modules
-        npm-debug.log
-        .env
-        .git
-        .gitignore
-        README.md
-        *.log
-        EOL
-        
-        else
-          echo "JavaScript project already exists"
-        fi
-
-    # Build and push using Cloud Build
-    - name: Build and Push with Cloud Build
-      run: |
-        cd mt5-websocket-client-js
-        gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-
-    - name: Deploy to Cloud Run
-      id: deploy
-      run: |
-        gcloud run deploy ${{ env.SERVICE_NAME }} \
-          --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-          --platform managed \
-          --region ${{ env.REGION }} \
-          --allow-unauthenticated \
-          --set-env-vars="MT5_SERVER_URL=${{ env.MT5_SERVER_URL }},FOREX_SYMBOLS=${{ env.FOREX_SYMBOLS }},STORAGE_TYPE=${{ env.STORAGE_TYPE }},BQ_DATASET_ID=${{ env.BQ_DATASET_ID }},BQ_TABLE_ID=${{ env.BQ_TABLE_ID }}" \
-          --cpu=1 \
-          --memory=512Mi \
-          --timeout=3600s \
-          --min-instances=1 \
-          --concurrency=1
-
-    - name: Create BigQuery Dataset if needed
-      run: |
-        # Check if dataset exists, create if it doesn't
-        if ! gcloud bigquery datasets describe ${{ env.BQ_DATASET_ID }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
-          echo "Creating BigQuery dataset: ${{ env.BQ_DATASET_ID }}"
-          gcloud bigquery datasets create ${{ env.BQ_DATASET_ID }} --project=${{ env.PROJECT_ID }} --location=US
-        else
-          echo "BigQuery dataset ${{ env.BQ_DATASET_ID }} already exists"
-        fi
-
-    - name: Set BigQuery Permissions
-      run: |
-        # Get the service account email from the deployed Cloud Run service
-        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-          --region ${{ env.REGION }} \
-          --format="value(serviceAccountEmail)")
-          
-        echo "Setting BigQuery permissions for service account: $SERVICE_ACCOUNT"
-        
-        # Grant BigQuery Data Editor role to the service account
-        gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
-          --member="serviceAccount:$SERVICE_ACCOUNT" \
-          --role="roles/bigquery.dataEditor"
-        
-        # Grant BigQuery Job User role to allow creating tables
-        gcloud projects add-iam-policy-binding ${{ env.PROJECT_ID }} \
-          --member="serviceAccount:$SERVICE_ACCOUNT" \
-          --role="roles/bigquery.jobUser"
-
-    - name: Create Cloud Scheduler job for keeping service alive
-      run: |
-        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-          --region ${{ env.REGION }} \
-          --format="value(status.url)")
-        
-        # Get the service account
-        SERVICE_ACCOUNT=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-          --region ${{ env.REGION }} \
-          --format="value(serviceAccountEmail)")
-        
-        # Create or update Cloud Scheduler job
-        if gcloud scheduler jobs describe keep-${{ env.SERVICE_NAME }}-alive \
-           --location ${{ env.REGION }} &> /dev/null; then
-          
-          gcloud scheduler jobs update http keep-${{ env.SERVICE_NAME }}-alive \
-            --location ${{ env.REGION }} \
-            --schedule="*/15 * * * *" \
-            --uri="${SERVICE_URL}/health" \
-            --http-method=GET \
-            --oidc-service-account-email="${SERVICE_ACCOUNT}"
-        else
-          gcloud scheduler jobs create http keep-${{ env.SERVICE_NAME }}-alive \
-            --location ${{ env.REGION }} \
-            --schedule="*/15 * * * *" \
-            --uri="${SERVICE_URL}/health" \
-            --http-method=GET \
-            --oidc-service-account-email="${SERVICE_ACCOUNT}"
-        fi
+        echo "HTTP Function URL: $(terraform output -raw cloud_function_http_url)"
+        echo "Pub/Sub Function Name: $(terraform output -raw cloud_function_pubsub_name)"
