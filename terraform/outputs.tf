@@ -1,31 +1,24 @@
-output "pubsub_topic_name" {
-  value = google_pubsub_topic.feedback_topic.name
+output "mt5_function_url" {
+  description = "URL of the deployed MT5 cloud function"
+  value       = google_cloudfunctions2_function.mt5_to_bigquery.url
 }
 
-output "positive_subscription_name" {
-  value = google_pubsub_subscription.positive_sub.name
+output "bigquery_dataset" {
+  description = "BigQuery dataset for MT5 data"
+  value       = google_bigquery_dataset.mt5_trading.dataset_id
 }
 
-output "negative_subscription_name" {
-  value = google_pubsub_subscription.negative_sub.name
+output "positions_table" {
+  description = "BigQuery table for positions data"
+  value       = "${google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.positions.table_id}"
 }
 
-output "receiver_function_url" {
-  value       = google_cloudfunctions_function.receiver_function.https_trigger_url
-  description = "The URL of the receiver function"
+output "transactions_table" {
+  description = "BigQuery table for transactions data"
+  value       = "${google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.transactions.table_id}"
 }
 
-output "feedback_topic" {
-  value       = google_pubsub_topic.feedback_topic.name
-  description = "The name of the feedback topic"
-}
-
-output "positive_subscription" {
-  value       = google_pubsub_subscription.positive_sub.name
-  description = "The name of the positive feedback subscription"
-}
-
-output "negative_subscription" {
-  value       = google_pubsub_subscription.negative_sub.name
-  description = "The name of the negative feedback subscription"
+output "prices_table" {
+  description = "BigQuery table for price updates data"
+  value       = "${google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.price_updates.table_id}"
 }

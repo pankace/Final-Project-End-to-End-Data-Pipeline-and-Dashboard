@@ -15,7 +15,7 @@ BQ_POSITIONS_TABLE = os.environ.get("BQ_POSITIONS_TABLE", "positions")
 BQ_TRANSACTIONS_TABLE = os.environ.get("BQ_TRANSACTIONS_TABLE", "transactions")
 BQ_PRICES_TABLE = os.environ.get("BQ_PRICES_TABLE", "price_updates")
 
-# Initialize BigQuery client - wrap in try/except to catch any initialization errors
+# Initialize BigQuery client
 try:
     bq_client = bigquery.Client()
     logger.info("BigQuery client initialized successfully")
