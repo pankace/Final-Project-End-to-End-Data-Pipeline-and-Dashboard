@@ -201,7 +201,20 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
   bucket = google_storage_bucket.function_bucket.name
   source = data.archive_file.pubsub_function_source.output_path
 }
+source {
+  storage_source {
+    bucket = google_storage_bucket.function_bucket[0].name  // Add [0] index
+    object = google_storage_bucket_object.http_function_zip.name
+  }
+}
 
+// Update the pubsub topic reference in the event trigger
+event_trigger {
+  trigger_region = var.region
+  event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
+  pubsub_topic   = google_pubsub_topic.mt5_topic[0].id  // Add [0] index
+  retry_policy   = "RETRY_POLICY_RETRY"
+}
 resource "google_pubsub_topic" "mt5_topic" {
   name = "mt5-trading-topic"
 }
