@@ -10,7 +10,7 @@ output "region" {
 
 output "bigquery_dataset" {
   description = "The BigQuery dataset ID"
-  value       = google_bigquery_dataset.mt5_trading[0].dataset_id
+  value       = google_bigquery_dataset.mt5_trading.dataset_id
 }
 
 output "pubsub_topic_name" {
