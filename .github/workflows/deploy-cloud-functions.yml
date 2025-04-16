@@ -246,7 +246,7 @@ jobs:
         EOF
 
         cp function_deploy/http_function/requirements.txt function_deploy/pubsub_function/requirements.txt
-    
+
     - name: Prepare minimal function files
       run: |
         # Clean any existing content
@@ -256,30 +256,67 @@ jobs:
         # Create minimal HTTP function
         cat > function_deploy/http_function/main.py << EOF
         import functions_framework
+        import logging
+        import os
+
+        # Configure basic logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
 
         @functions_framework.http
         def process_mt5_data(request):
             """HTTP Cloud Function."""
+            logger.info("HTTP function invoked")
             return "HTTP Function is working!"
         EOF
 
         # Create minimal PubSub function
         cat > function_deploy/pubsub_function/main.py << EOF
         import functions_framework
+        import logging
+        import os
+
+        # Configure basic logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
 
         @functions_framework.cloud_event
         def pubsub_function(cloud_event):
             """Cloud Function triggered by a CloudEvent."""
+            logger.info("PubSub function invoked")
             return "PubSub function working!"
         EOF
 
-        # Create minimal requirements.txt files
-        echo "functions-framework==3.0.0" > function_deploy/http_function/requirements.txt
-        echo "functions-framework==3.0.0" > function_deploy/pubsub_function/requirements.txt
+        # Create server.py files for proper PORT handling
+        cat > function_deploy/http_function/server.py << EOF
+        import os
+        import functions_framework
+        from main import process_mt5_data
 
-        # No startup scripts, no server.py, no complex file structure
+        if __name__ == "__main__":
+            port = int(os.environ.get("PORT", 8080))
+            functions_framework.start(target=process_mt5_data, port=port)
+        EOF
+
+        cat > function_deploy/pubsub_function/server.py << EOF
+        import os
+        import functions_framework
+        from main import pubsub_function
+
+        if __name__ == "__main__":
+            port = int(os.environ.get("PORT", 8080))
+            functions_framework.start(target=pubsub_function, port=port)
+        EOF
+
+        # Create minimal requirements.txt files with gunicorn
+        echo "functions-framework==3.0.0" > function_deploy/http_function/requirements.txt
+        echo "gunicorn==20.1.0" >> function_deploy/http_function/requirements.txt
+        echo "functions-framework==3.0.0" > function_deploy/pubsub_function/requirements.txt
+        echo "gunicorn==20.1.0" >> function_deploy/pubsub_function/requirements.txt
+
+        # No startup scripts, no complex file structure
         find function_deploy -type f
-        
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
       with:
