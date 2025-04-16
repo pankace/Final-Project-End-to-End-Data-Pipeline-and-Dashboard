@@ -3,61 +3,47 @@ provider "google" {
   region  = var.region
 }
 
-# Use data sources to reference existing resources instead of creating them
+///////////////////////////////////
+//  Existing Resources and Data
+///////////////////////////////////
+
+// Use a data source to reference the existing function storage bucket
 data "google_storage_bucket" "function_bucket" {
   name = "${var.project_id}-function-source"
 }
 
-# Create zip archive of the cloud function
+// Create a zip archive of the cloud function
 data "archive_file" "mt5_to_cloudfunction" {
   type        = "zip"
   source_dir  = "${path.root}/../functions/mt5 to cloudfunction"
   output_path = "${path.root}/tmp/mt5_to_cloudfunction.zip"
 }
 
-# Upload the function source code to the bucket
+// Upload the function source code to the bucket
 resource "google_storage_bucket_object" "mt5_function_zip" {
   name   = "source/mt5_to_cloudfunction_${data.archive_file.mt5_to_cloudfunction.output_md5}.zip"
   bucket = data.google_storage_bucket.function_bucket.name
   source = data.archive_file.mt5_to_cloudfunction.output_path
 }
 
+////////////////////////////////////
+//  BigQuery Dataset (data source)
+////////////////////////////////////
 
-
-// Existing dataset
 data "google_bigquery_dataset" "mt5_trading" {
   dataset_id = "mt5_trading"
   project    = var.project_id
 }
 
-// ---------------------------------------
-// DATA Resources for existing tables
-// ---------------------------------------
-data "google_bigquery_table" "positions" {
-  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
-  table_id   = "positions"
-  project    = var.project_id
-}
+/////////////////////////////////////////////////
+//  BigQuery Tables (managed via 'resource')
+/////////////////////////////////////////////////
 
-data "google_bigquery_table" "transactions" {
-  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
-  table_id   = "transactions"
-  project    = var.project_id
-}
-
-data "google_bigquery_table" "price_updates" {
-  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
-  table_id   = "price_updates"
-  project    = var.project_id
-}
-
-
-# Create or update BigQuery tables
 resource "google_bigquery_table" "positions" {
-  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
-  table_id   = "positions"
-  project    = var.project_id
-  deletion_protection = false # Set to true in production
+  dataset_id         = data.google_bigquery_dataset.mt5_trading.dataset_id
+  table_id           = "positions"
+  project            = var.project_id
+  deletion_protection = false
 
   schema = <<EOF
 [
@@ -108,6 +94,7 @@ resource "google_bigquery_table" "positions" {
   }
 ]
 EOF
+
   lifecycle {
     ignore_changes = [
       schema,
@@ -118,10 +105,10 @@ EOF
 }
 
 resource "google_bigquery_table" "transactions" {
-  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
-  table_id   = "transactions"
-  project    = var.project_id
-  deletion_protection = false # Set to true in production
+  dataset_id         = data.google_bigquery_dataset.mt5_trading.dataset_id
+  table_id           = "transactions"
+  project            = var.project_id
+  deletion_protection = false
 
   schema = <<EOF
 [
@@ -172,6 +159,7 @@ resource "google_bigquery_table" "transactions" {
   }
 ]
 EOF
+
   lifecycle {
     ignore_changes = [
       schema,
@@ -182,10 +170,10 @@ EOF
 }
 
 resource "google_bigquery_table" "price_updates" {
-  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
-  table_id   = "price_updates"
-  project    = var.project_id
-  deletion_protection = false # Set to true in production
+  dataset_id         = data.google_bigquery_dataset.mt5_trading.dataset_id
+  table_id           = "price_updates"
+  project            = var.project_id
+  deletion_protection = false
 
   schema = <<EOF
 [
@@ -216,6 +204,7 @@ resource "google_bigquery_table" "price_updates" {
   }
 ]
 EOF
+
   lifecycle {
     ignore_changes = [
       schema,
@@ -225,20 +214,25 @@ EOF
   }
 }
 
-# Use data source to reference existing service account
+////////////////////////////////////////////////
+//  Service Account and IAM for Cloud Function
+////////////////////////////////////////////////
+
 data "google_service_account" "function_account" {
   account_id = "mt5-function-sa"
-  project    = var.project_id # Add project ID for clarity
+  project    = var.project_id
 }
 
-# We'll use additive IAM bindings to avoid conflicts
 resource "google_project_iam_member" "function_bigquery" {
   project = var.project_id
   role    = "roles/bigquery.dataEditor"
   member  = "serviceAccount:${data.google_service_account.function_account.email}"
 }
 
-# Deploy the cloud function
+////////////////////////////////////////////////
+//  Cloud Function Definition & Deployment
+////////////////////////////////////////////////
+
 resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
   name        = "mt5-to-bigquery"
   location    = var.region
@@ -278,13 +272,16 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
   }
 }
 
-# Public access to Cloud Function
+////////////////////////////////////////////////
+//  Public Access to Cloud Function
+////////////////////////////////////////////////
+
 resource "google_cloud_run_service_iam_member" "public_invoke" {
   location = var.region
   service  = google_cloudfunctions2_function.mt5_to_bigquery.name
   role     = "roles/run.invoker"
   member   = "allUsers"
-  
+
   depends_on = [
     google_cloudfunctions2_function.mt5_to_bigquery
   ]
