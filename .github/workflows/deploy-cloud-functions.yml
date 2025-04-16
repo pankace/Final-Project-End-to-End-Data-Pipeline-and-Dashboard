@@ -100,50 +100,60 @@ jobs:
 
     - name: Prepare function deployment directories
       run: |
-        # Create directories for function deployment
-        mkdir -p function_deploy/http_function/src function_deploy/pubsub_function/src
+        mkdir -p function_deploy/http_function function_deploy/pubsub_function
         
-        # HTTP Function
-        cp src/cloud_functions/http_function.py function_deploy/http_function/main.py
-        echo "google-cloud-bigquery>=3.3.5" > function_deploy/http_function/requirements.txt
-        echo "functions-framework>=3.0.0" >> function_deploy/http_function/requirements.txt
+        # Copy the functions but modify imports to use relative paths
+        cat src/cloud_functions/http_function.py | sed 's/from src\./from ./g' > function_deploy/http_function/main.py
+        cat src/cloud_functions/pubsub_function.py | sed 's/from src\./from ./g' > function_deploy/pubsub_function/main.py
         
-        # Pub/Sub Function
-        cp src/cloud_functions/pubsub_function.py function_deploy/pubsub_function/main.py
-        echo "google-cloud-bigquery>=3.3.5" > function_deploy/pubsub_function/requirements.txt
-        echo "functions-framework>=3.0.0" >> function_deploy/pubsub_function/requirements.txt
+        # Copy other modules at the correct level
+        cp -r src/connectors function_deploy/http_function/
+        cp -r src/processors function_deploy/http_function/
+        cp -r src/config function_deploy/http_function/
         
-        # Copy shared code
-        mkdir -p function_deploy/http_function/src/connectors function_deploy/http_function/src/processors function_deploy/http_function/src/config
-        mkdir -p function_deploy/pubsub_function/src/connectors function_deploy/pubsub_function/src/processors function_deploy/pubsub_function/src/config
+        cp -r src/connectors function_deploy/pubsub_function/
+        cp -r src/processors function_deploy/pubsub_function/
+        cp -r src/config function_deploy/pubsub_function/
         
-        # Copy connectors
-        cp -r src/connectors/* function_deploy/http_function/src/connectors/
-        cp -r src/connectors/* function_deploy/pubsub_function/src/connectors/
+        # Create __init__.py files for proper importing
+        touch function_deploy/http_function/__init__.py
+        touch function_deploy/http_function/connectors/__init__.py
+        touch function_deploy/http_function/processors/__init__.py
+        touch function_deploy/http_function/config/__init__.py
         
-        # Copy processors
-        cp -r src/processors/* function_deploy/http_function/src/processors/
-        cp -r src/processors/* function_deploy/pubsub_function/src/processors/
+        touch function_deploy/pubsub_function/__init__.py
+        touch function_deploy/pubsub_function/connectors/__init__.py
+        touch function_deploy/pubsub_function/processors/__init__.py
+        touch function_deploy/pubsub_function/config/__init__.py
         
-        # Copy config
-        cp -r src/config/* function_deploy/http_function/src/config/
-        cp -r src/config/* function_deploy/pubsub_function/src/config/
+        # Create requirements.txt for each function
+        cat > function_deploy/http_function/requirements.txt << EOF
+        functions-framework>=3.0.0
+        google-cloud-bigquery>=3.3.5
+        Flask>=2.0.0
+        EOF
         
-        # Create __init__.py files
-        touch function_deploy/http_function/src/__init__.py
-        touch function_deploy/http_function/src/connectors/__init__.py
-        touch function_deploy/http_function/src/processors/__init__.py
-        touch function_deploy/http_function/src/config/__init__.py
-        
-        touch function_deploy/pubsub_function/src/__init__.py
-        touch function_deploy/pubsub_function/src/connectors/__init__.py
-        touch function_deploy/pubsub_function/src/processors/__init__.py
-        touch function_deploy/pubsub_function/src/config/__init__.py
+        cat > function_deploy/pubsub_function/requirements.txt << EOF
+        functions-framework>=3.0.0
+        google-cloud-bigquery>=3.3.5
+        EOF
         
         # Update settings.py with environment variables
-        sed -i "s/BQ_PROJECT_ID = \"your-project-id\"/BQ_PROJECT_ID = os.environ.get(\"PROJECT_ID\", \"${{ env.PROJECT_ID }}\")/" function_deploy/http_function/src/config/settings.py
-        sed -i "s/BQ_PROJECT_ID = \"your-project-id\"/BQ_PROJECT_ID = os.environ.get(\"PROJECT_ID\", \"${{ env.PROJECT_ID }}\")/" function_deploy/pubsub_function/src/config/settings.py
-
+        sed -i "s/BQ_PROJECT_ID = \"your-project-id\"/BQ_PROJECT_ID = os.environ.get(\"PROJECT_ID\", \"${{ env.PROJECT_ID }}\")/" function_deploy/http_function/config/settings.py
+        sed -i "s/BQ_PROJECT_ID = \"your-project-id\"/BQ_PROJECT_ID = os.environ.get(\"PROJECT_ID\", \"${{ env.PROJECT_ID }}\")/" function_deploy/pubsub_function/config/settings.py
+        
+        # Add Procfile for each function (helps with port binding)
+        cat > function_deploy/http_function/Procfile << EOF
+        web: functions-framework --target=process_mt5_data --debug
+        EOF
+        
+        cat > function_deploy/pubsub_function/Procfile << EOF
+        web: functions-framework --target=pubsub_function --debug
+        EOF
+        
+        # Print directory structure for verification
+        echo "Function deployment directories prepared:"
+        find function_deploy -type f | sort
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
       with:
