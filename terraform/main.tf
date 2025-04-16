@@ -192,7 +192,6 @@ resource "google_project_iam_binding" "function_bigquery" {
     "serviceAccount:${google_service_account.function_account.email}",
   ]
 }
-
 # Deploy the cloud function
 resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
   name        = "mt5-to-bigquery"
@@ -222,18 +221,15 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
       BQ_TRANSACTIONS_TABLE = "transactions"
       BQ_PRICES_TABLE      = "price_updates"
     }
+    ingress_settings      = "ALLOW_ALL"
+    all_traffic_on_latest_revision = true
   }
-  
-  trigger {
-    http {
-      security_level = "SECURE_ALWAYS" # HTTP call needs authentication
-      cors {
-        allow_origin = ["*"]
-        allow_methods = ["GET", "POST", "OPTIONS"]
-        allow_headers = ["Content-Type", "Authorization"]
-        max_age = 3600
-      }
-    }
+
+  # Replace the trigger block with the proper syntax
+  lifecycle {
+    ignore_changes = [
+      labels["deployment-tool"]
+    ]
   }
 
   depends_on = [
@@ -244,14 +240,20 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
   ]
 }
 
-# Allow public access to the function (optional - use with caution)
-resource "google_cloud_run_service_iam_member" "public_access" {
+# Add this instead of the trigger block for HTTP functions
+resource "google_cloud_run_service_iam_member" "public_invoke" {
   location = var.region
   service  = google_cloudfunctions2_function.mt5_to_bigquery.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "allUsers"  # This makes the function publicly accessible - be careful!
   
   depends_on = [
     google_cloudfunctions2_function.mt5_to_bigquery
   ]
+}
+
+# Add an output to easily get the function URL
+output "mt5_function_url" {
+  description = "URL of the deployed MT5 cloud function"
+  value       = google_cloudfunctions2_function.mt5_to_bigquery.url
 }

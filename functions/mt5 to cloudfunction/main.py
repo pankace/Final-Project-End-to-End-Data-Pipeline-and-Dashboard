@@ -110,3 +110,4 @@ def receive_message(request):
     except Exception as e:
         logger.exception(f"Error processing request: {str(e)}")
         return jsonify({'error': f'Error processing request: {str(e)}'}), 500
+    
