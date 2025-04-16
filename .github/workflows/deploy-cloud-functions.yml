@@ -43,6 +43,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install google-cloud-bigquery google-cloud-pubsub functions-framework
 
+    - name: Install Python dependencies for functions
+      run: |
+        cd function_deploy/http_function
+        pip install functions-framework -t .
+        cd ../../function_deploy/pubsub_function
+        pip install functions-framework -t .
+
+    - name: Add requirements.txt for functions
+      run: |
+        cat > function_deploy/http_function/requirements.txt << EOF
+        functions-framework==3.*
+        google-cloud-bigquery==3.*
+        google-cloud-pubsub==2.*
+        EOF
+
+        cp function_deploy/http_function/requirements.txt function_deploy/pubsub_function/requirements.txt
+    
     - name: Authenticate to Google Cloud
       uses: 'google-github-actions/auth@v1'
       with:
@@ -106,18 +123,18 @@ jobs:
         mkdir -p function_deploy/pubsub_function/processors
         mkdir -p function_deploy/pubsub_function/connectors
         mkdir -p function_deploy/pubsub_function/config
-        
+
         # Create empty __init__.py files to make directories packages
         touch function_deploy/http_function/__init__.py
         touch function_deploy/http_function/processors/__init__.py
         touch function_deploy/http_function/connectors/__init__.py
         touch function_deploy/http_function/config/__init__.py
-        
+
         # Copy and fix files
         cp src/processors/price_processor.py function_deploy/http_function/processors/
         cp src/processors/trade_processor.py function_deploy/http_function/processors/
         cp src/connectors/bigquery_client.py function_deploy/http_function/connectors/
-        
+
         # Fix imports in all files
         find function_deploy -name "*.py" -exec sed -i 's/from src\./from /g' {} \;
 
