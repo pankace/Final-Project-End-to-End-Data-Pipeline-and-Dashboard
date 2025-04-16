@@ -247,7 +247,39 @@ jobs:
 
         cp function_deploy/http_function/requirements.txt function_deploy/pubsub_function/requirements.txt
     
-    
+    - name: Prepare minimal function files
+      run: |
+        # Clean any existing content
+        rm -rf function_deploy/http_function/*
+        rm -rf function_deploy/pubsub_function/*
+
+        # Create minimal HTTP function
+        cat > function_deploy/http_function/main.py << EOF
+        import functions_framework
+
+        @functions_framework.http
+        def process_mt5_data(request):
+            """HTTP Cloud Function."""
+            return "HTTP Function is working!"
+        EOF
+
+        # Create minimal PubSub function
+        cat > function_deploy/pubsub_function/main.py << EOF
+        import functions_framework
+
+        @functions_framework.cloud_event
+        def pubsub_function(cloud_event):
+            """Cloud Function triggered by a CloudEvent."""
+            return "PubSub function working!"
+        EOF
+
+        # Create minimal requirements.txt files
+        echo "functions-framework==3.0.0" > function_deploy/http_function/requirements.txt
+        echo "functions-framework==3.0.0" > function_deploy/pubsub_function/requirements.txt
+
+        # No startup scripts, no server.py, no complex file structure
+        find function_deploy -type f
+        
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
       with:

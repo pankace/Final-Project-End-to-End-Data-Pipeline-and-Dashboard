@@ -61,9 +61,5 @@ logger = logging.getLogger(__name__)
 
 @functions_framework.cloud_event
 def pubsub_function(cloud_event):
-    """Cloud Function triggered by Pub/Sub"""
-    logger.info(f"Event ID: {cloud_event.id}")
-    
-    # Simple response to verify function is working
-    # We'll expand this once we confirm deployment
-    return "PubSub function triggered successfully!"
+    """Cloud Function triggered by a CloudEvent."""
+    return "PubSub function working!"
