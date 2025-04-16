@@ -1,56 +1,74 @@
-# Final-Project-End-to-End-Data-Pipeline-and-Dashboard
+# MT5 Trading Pipeline
 
-# Final Project: End-to-End Data Pipeline on Google Cloud Platform (GCP)
+## Project Overview
+The MT5 Trading Pipeline is an end-to-end data pipeline designed to ingest, process, and visualize trading data from MetaTrader 5 (MT5) using Google Cloud Platform (GCP). This project demonstrates the full data engineering lifecycle, from data ingestion to dashboard visualization.
 
-## Objective  
-The goal of this final project is to demonstrate your understanding of the full data engineering lifecycle by building an end-to-end data pipeline on **Google Cloud Platform (GCP)**, culminating in a functional dashboard.
+## Problem Statement
+The goal of this project is to build a robust data pipeline that:
+- Ingests real-time trading data.
+- Stores the data in a data lake.
+- Moves the data to a data warehouse.
+- Transforms the data to make it analysis-ready.
+- Presents meaningful insights through a functional dashboard.
 
-## Problem Statement  
-You are required to:  
-- Choose a **dataset of interest**.  
-- Design and implement a **pipeline to ingest and store** the dataset in a **data lake**.  
-- Build a **pipeline to move the data** from the data lake to a **data warehouse**.  
-- Apply **data transformation** within the warehouse to make it **analysis-ready**.  
-- Build a **dashboard (at least one page)** that presents **meaningful insights** using the transformed data.  
+## Data Pipeline Type
+This project implements a **streaming pipeline** to ingest real-time data into the data lake. The choice of a streaming pipeline allows for immediate processing and analysis of trading data, which is crucial for timely decision-making in trading environments.
 
-## Data Pipeline Type  
-You must choose either:  
-- **Streaming pipeline** – for ingesting real-time data into the data lake.  
-- **Batch pipeline** – for periodic ingestion (e.g., hourly, daily).  
+## Key Features
+- **Pipeline Reliability**: The code is designed to be robust and reusable, ensuring that it can handle multiple runs without failure.
+- **Security Best Practices**: The project follows best practices for managing credentials, access control, and secure data handling.
+- **Flexibility and Scalability**: The architecture allows for easy reruns and scaling of the pipeline without major rework.
+- **Best Practices Adherence**: The project follows principles of decoupling, modularization, and monitoring.
 
-Be clear in your choice and rationale.
+## Project Structure
+- **src/**: Contains the main source code for the pipeline.
+  - **config/**: Configuration settings for the project.
+  - **connectors/**: Modules for connecting to external services (e.g., BigQuery).
+  - **processors/**: Logic for processing incoming data.
+  - **cloud_functions/**: Cloud Functions for handling HTTP requests and Pub/Sub messages.
+  - **utils/**: Utility functions for logging and other common tasks.
+- **dashboard/**: Contains the dashboard application for visualizing processed data.
+- **terraform/**: Infrastructure as Code (IaC) configuration for deploying resources on GCP.
+- **tests/**: Unit tests for ensuring code quality and reliability.
+- **requirements.txt**: Lists project dependencies.
+- **Dockerfile**: Instructions for building a Docker image for the project.
 
-## Key Evaluation Criteria  
-- **Pipeline reliability**: The code should be **robust and reusable**, not something that breaks after one run.  
-- **Security best practices**: Follow best practices for **managing credentials, access control, and secure data handling**.  
-- **Flexibility and scalability**: A well-designed pipeline should be **runnable or scalable without major rework**.  
-- **Best practices adherence**: Projects following **class concepts** (e.g., **decoupling, modularization, monitoring**) will score higher.  
+## Instructions for Deployment
+1. **Clone the Repository**: 
+   ```
+   git clone <repository-url>
+   cd mt5-trading-pipeline
+   ```
 
-## Deliverables  
-- **Final Presentation**: Due **Friday, April 4th (in class)**.  
-- **Final Submission**: Due **Monday, April 7th**.  
+2. **Set Up Environment**: 
+   - Create a virtual environment and activate it.
+   - Install dependencies:
+     ```
+     pip install -r requirements.txt
+     ```
 
-## Data Source Flexibility (Recommended)  
-Whenever possible, design your pipeline to support **changeable or refreshable data sources**.  
-- The data should be **re-ingestible over time** (e.g., via an API that updates regularly, scheduled batch jobs, or streaming).  
-- If using **static datasets** (e.g., from Kaggle or public CSVs), structure your pipeline as if it could be **re-run with new or updated data** in the future.  
+3. **Configure Settings**: 
+   - Update `src/config/settings.py` with your API keys and database connection strings.
 
-💡 **Tip**:  
-We understand it can be difficult to find publicly available APIs with real-time or regularly updating data. In such cases:  
-- You may use **web scraping** (ensure the site permits it).  
-- Or **simulate freshness** by **splitting and replaying static datasets over time**.  
+4. **Deploy Infrastructure**: 
+   - Navigate to the `terraform` directory and run:
+     ```
+     terraform init
+     terraform apply
+     ```
 
-Clearly explain any **limitations and your approach** in the `README`.  
-**Projects that consider reusability or auto-refresh mechanisms will score higher**.
+5. **Run the Dashboard**: 
+   - Start the dashboard application:
+     ```
+     python dashboard/app.py
+     ```
 
-## Submission Requirements  
-To submit your project, please provide:  
-1. **A link to your GitHub repository**  
-2. **Your Commit ID** (6 alphanumeric characters)  
+## Limitations
+- The project currently relies on simulated data for testing purposes. Future iterations may include integration with live data sources.
+- Ensure that any web scraping complies with the target website's terms of service.
 
-### Your GitHub repository should contain:  
-- **All relevant code**  
-- A clear and concise `README` file explaining:  
-  - Your approach, pipeline architecture  
-  - Instructions to reproduce or deploy your project (if applicable)  
-  - A **link to your final dashboard**  
+## Final Dashboard
+A link to the final dashboard will be provided upon completion of the project.
+
+## Conclusion
+This project serves as a comprehensive demonstration of the data engineering lifecycle, showcasing the ability to build a scalable and reliable data pipeline on Google Cloud Platform.
