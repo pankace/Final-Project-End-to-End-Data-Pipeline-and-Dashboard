@@ -10,24 +10,22 @@ output "region" {
 
 output "bigquery_dataset" {
   description = "The BigQuery dataset ID"
-  value       = google_bigquery_dataset.mt5_trading[0].dataset_id
+  value       = var.create_bigquery_dataset ? google_bigquery_dataset.mt5_trading[0].dataset_id : "Dataset not created"
 }
 
 output "pubsub_topic_name" {
   description = "The name of the Pub/Sub topic"
-  value       = google_pubsub_topic.mt5_topic[0].name
+  value       = var.create_pubsub_topic ? google_pubsub_topic.mt5_topic[0].name : "Topic not created"
 }
 
 output "cloud_function_http_url" {
   description = "The HTTPS URL for the HTTP-triggered Cloud Function"
-  # Add index to the function reference
-  value = var.create_http_function ? google_cloudfunctions2_function.http_function[0].service_config[0].uri : null
+  value       = var.create_http_function ? google_cloudfunctions2_function.http_function[0].service_config[0].uri : "Function not created"
 }
 
 output "cloud_function_pubsub_name" {
   description = "The name of the Pub/Sub-triggered Cloud Function"
-  # Add index to the function reference
-  value = var.create_pubsub_function ? google_cloudfunctions2_function.pubsub_function[0].name : null
+  value       = var.create_pubsub_function ? google_cloudfunctions2_function.pubsub_function[0].name : "Function not created"
 }
 
 output "cloud_function_bucket_name" {
