@@ -110,10 +110,6 @@ jobs:
       working-directory: terraform
       run: terraform validate
 
-    - name: Terraform Plan
-      working-directory: terraform
-      run: terraform plan -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
-    
     - name: Import existing resources
       working-directory: terraform
       run: |
@@ -122,6 +118,10 @@ jobs:
         terraform import google_storage_bucket.function_bucket ${{ env.PROJECT_ID }}-function-bucket || true
         terraform import google_pubsub_topic.mt5_topic projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic || true
 
+    - name: Terraform Plan
+      working-directory: terraform
+      run: terraform plan -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
+      
     - name: Terraform Apply
       working-directory: terraform
       run: terraform apply -auto-approve -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
