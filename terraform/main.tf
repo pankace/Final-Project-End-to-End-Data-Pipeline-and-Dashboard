@@ -216,7 +216,7 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
 
 # HTTP Function (Gen 2)
 resource "google_cloudfunctions2_function" "http_function" {
-  count = var.create_http_function && var.create_storage_bucket ? 1 : 0
+  count = var.create_http_function ? 1 : 0
 
 
   name        = "mt5-http-function"

@@ -1,5 +1,12 @@
 import os
 
+# BigQuery settings
+BQ_PROJECT_ID = os.environ.get("PROJECT_ID")  # Will be set by Cloud Functions env vars
+BQ_DATASET_ID = os.environ.get("BQ_DATASET", "mt5_trading")
+BQ_POSITIONS_TABLE = "positions"
+BQ_TRANSACTIONS_TABLE = "transactions" 
+BQ_PRICES_TABLE = "price_updates"
+
 class Config:
     """Base configuration class."""
     DEBUG = False
