@@ -210,6 +210,8 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
 
 # HTTP Function (Gen 2)
 resource "google_cloudfunctions2_function" "http_function" {
+  count = var.create_http_function ? 1 : 0
+
   name        = "mt5-http-function"
   location    = var.region
   description = "HTTP function for processing MT5 trading data"
@@ -242,6 +244,7 @@ resource "google_cloudfunctions2_function" "http_function" {
 
 # HTTP Function IAM
 resource "google_cloud_run_service_iam_member" "http_invoker" {
+  count = var.create_http_function ? 1 : 0
   location = google_cloudfunctions2_function.http_function.location
   service  = google_cloudfunctions2_function.http_function.name
   role     = "roles/run.invoker"
@@ -250,6 +253,8 @@ resource "google_cloud_run_service_iam_member" "http_invoker" {
 
 # Pub/Sub Function (Gen 2)
 resource "google_cloudfunctions2_function" "pubsub_function" {
+  count = var.create_pubsub_function ? 1 : 0
+
   name        = "mt5-pubsub-function"
   location    = var.region
   description = "Pub/Sub function for processing MT5 trading data"

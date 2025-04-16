@@ -49,3 +49,15 @@ variable "cloud_function_timeout" {
   type        = number
   default     = 60
 }
+
+variable "create_http_function" {
+  description = "Whether to create HTTP Cloud Function"
+  type        = bool
+  default     = true
+}
+
+variable "create_pubsub_function" {
+  description = "Whether to create PubSub Cloud Function"
+  type        = bool
+  default     = true
+}
