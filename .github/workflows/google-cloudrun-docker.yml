@@ -1,0 +1,219 @@
+name: Deploy Sentiment Analysis Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual triggering
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  POSITIVE_CHANNEL_ID: ${{ secrets.POSITIVE_CHANNEL_ID }}
+  NEGATIVE_CHANNEL_ID: ${{ secrets.NEGATIVE_CHANNEL_ID }}
+
+jobs:
+  deploy:
+    name: Deploy to Google Cloud
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Needed for Google auth
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r functions/pubsub-receiver/requirements.txt
+          pip install -r functions/pubsub-positive-analyzer/requirements.txt
+          pip install -r functions/pubsub-negative-analyzer/requirements.txt
+          pip install pytest
+
+      #- name: Run tests
+      #  run: pytest tests/
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          # Alternatively, use Workload Identity Federation:
+          # workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          # service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Create tmp directory for archives
+        run: mkdir -p terraform/tmp
+
+      - name: Create Pub/Sub topic
+        id: create_topic
+        continue-on-error: true
+        run: |
+          if ! gcloud pubsub topics describe feedback-topic --project=$PROJECT_ID >/dev/null 2>&1; then
+            gcloud pubsub topics create feedback-topic --project=$PROJECT_ID
+            echo "created=true" >> $GITHUB_OUTPUT
+          else
+            echo "created=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pub/Sub subscriptions
+        id: create_subscriptions
+        continue-on-error: true
+        run: |
+          # Create positive subscription
+          if ! gcloud pubsub subscriptions describe positive-sub --project=$PROJECT_ID >/dev/null 2>&1; then
+            gcloud pubsub subscriptions create positive-sub --topic=feedback-topic --project=$PROJECT_ID
+            echo "positive_created=true" >> $GITHUB_OUTPUT
+          else
+            echo "positive_created=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Create negative subscription
+          if ! gcloud pubsub subscriptions describe negative-sub --project=$PROJECT_ID >/dev/null 2>&1; then
+            gcloud pubsub subscriptions create negative-sub --topic=feedback-topic --project=$PROJECT_ID
+            echo "negative_created=true" >> $GITHUB_OUTPUT
+          else
+            echo "negative_created=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create BigQuery dataset and table
+        id: create_bigquery
+        continue-on-error: true
+        run: |
+          # Check if dataset exists
+          if ! bq ls --dataset --project_id=$PROJECT_ID | grep -q feedback_dataset; then
+            bq mk --dataset --location=US $PROJECT_ID:feedback_dataset
+            echo "dataset_created=true" >> $GITHUB_OUTPUT
+          else
+            echo "dataset_created=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Create table (this will create or update)
+          bq mk --table --schema 'user_id:STRING,message:STRING' $PROJECT_ID:feedback_dataset.feedback_table
+          echo "table_created=true" >> $GITHUB_OUTPUT
+
+      - name: Create Secret Manager secret for Slack
+        id: create_secret
+        continue-on-error: true
+        run: |
+          # Check if secret exists
+          if ! gcloud secrets describe slacktoken --project=$PROJECT_ID >/dev/null 2>&1; then
+            echo "Creating slacktoken secret"
+            gcloud secrets create slacktoken --project=$PROJECT_ID
+            echo "created=true" >> $GITHUB_OUTPUT
+          else
+            echo "created=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Add new version with the token
+          echo "${{ secrets.SLACK_TOKEN }}" | gcloud secrets versions add slacktoken --data-file=- --project=$PROJECT_ID
+
+      - name: Create function bucket if not exists
+        id: create_bucket
+        continue-on-error: true
+        run: |
+          BUCKET_NAME="${PROJECT_ID}-function-source"
+          if ! gsutil ls -b gs://${BUCKET_NAME} >/dev/null 2>&1; then
+            gsutil mb -l US gs://${BUCKET_NAME}
+            echo "created=true" >> $GITHUB_OUTPUT
+          else
+            echo "created=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare function archives
+        run: |
+          cd functions/pubsub-receiver
+          zip -r ../../terraform/tmp/receiver.zip .
+          cd ../../functions/pubsub-positive-analyzer
+          zip -r ../../terraform/tmp/positive-analyzer.zip .
+          cd ../../functions/pubsub-negative-analyzer
+          zip -r ../../terraform/tmp/negative-analyzer.zip .
+
+      - name: Upload function archives to Cloud Storage
+        run: |
+          BUCKET_NAME="${PROJECT_ID}-function-source"
+          gsutil cp terraform/tmp/receiver.zip gs://${BUCKET_NAME}/receiver.zip
+          gsutil cp terraform/tmp/positive-analyzer.zip gs://${BUCKET_NAME}/positive-analyzer.zip
+          gsutil cp terraform/tmp/negative-analyzer.zip gs://${BUCKET_NAME}/negative-analyzer.zip
+
+      - name: Set up service account for functions
+        id: setup_service_account
+        continue-on-error: true
+        run: |
+          if ! gcloud iam service-accounts describe sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com >/dev/null 2>&1; then
+            gcloud iam service-accounts create sentiment-functions-sa --display-name="Sentiment Analysis Functions Service Account"
+            echo "created=true" >> $GITHUB_OUTPUT
+          else
+            echo "created=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Grant IAM permissions
+          gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+            --member="serviceAccount:sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role="roles/pubsub.publisher"
+          
+          gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+            --member="serviceAccount:sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role="roles/pubsub.subscriber"
+          
+          gcloud secrets add-iam-policy-binding slacktoken \
+            --project=${PROJECT_ID} \
+            --member="serviceAccount:sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor"
+
+      - name: Deploy receiver function
+        run: |
+          gcloud functions deploy pubsub-receiver \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --gen2 \
+            --runtime=python39 \
+            --trigger-http \
+            --allow-unauthenticated \
+            --entry-point=receive_message \
+            --source=./functions/pubsub-receiver \
+            --set-env-vars=PUBSUB_TOPIC=feedback-topic,PROJECT_ID=$PROJECT_ID \
+            --service-account=sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com
+            
+      - name: Deploy positive analyzer function
+        run: |
+          gcloud functions deploy pubsub-positive-analyzer \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --gen2 \
+            --runtime=python39 \
+            --trigger-topic=feedback-topic \
+            --entry-point=analyze_sentiment \
+            --source=./functions/pubsub-positive-analyzer \
+            --set-env-vars=SLACK_CHANNEL=$POSITIVE_CHANNEL_ID,SENTIMENT_THRESHOLD=0.25 \
+            --set-secrets=SLACK_TOKEN=slacktoken:latest \
+            --service-account=sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com
+
+      - name: Deploy negative analyzer function
+        run: |
+          gcloud functions deploy pubsub-negative-analyzer \
+            --project=$PROJECT_ID \
+            --region=$REGION \
+            --gen2 \
+            --runtime=python39 \
+            --trigger-topic=feedback-topic \
+            --entry-point=analyze_sentiment \
+            --source=./functions/pubsub-negative-analyzer \
+            --set-env-vars=SLACK_CHANNEL=$NEGATIVE_CHANNEL_ID,SENTIMENT_THRESHOLD=-0.25 \
+            --set-secrets=SLACK_TOKEN=slacktoken:latest \
+            --service-account=sentiment-functions-sa@${PROJECT_ID}.iam.gserviceaccount.com
+
+      - name: Display deployment info
+        run: |
+          echo "Receiver function URL:"
+          gcloud functions describe pubsub-receiver --region=$REGION --project=$PROJECT_ID --format='value(httpsTrigger.url)'

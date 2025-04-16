@@ -1,65 +1,90 @@
-# MT5 Trading Pipeline
+# Sentiment Analysis Pipeline
 
-## Project Overview
-The MT5 Trading Pipeline is an end-to-end data pipeline designed to ingest, process, and visualize trading data from MetaTrader 5 (MT5) using Google Cloud Platform (GCP). This project demonstrates the full data engineering lifecycle, from data ingestion to dashboard visualization.
-
-## Problem Statement
-The goal of this project is to build a robust data pipeline that:
-- Ingests real-time trading data.
-- Stores the data in a data lake.
-- Moves the data to a data warehouse.
-- Transforms the data to make it analysis-ready.
-- Presents meaningful insights through a functional dashboard.
-
-## Data Pipeline Type
-This project implements a **streaming pipeline** to ingest real-time data into the data lake. The choice of a streaming pipeline allows for immediate processing and analysis of trading data, which is crucial for timely decision-making in trading environments.
-
-## Key Features
-- **Pipeline Reliability**: The code is designed to be robust and reusable, ensuring that it can handle multiple runs without failure.
-- **Security Best Practices**: The project follows best practices for managing credentials, access control, and secure data handling.
-- **Flexibility and Scalability**: The architecture allows for easy reruns and scaling of the pipeline without major rework.
-- **Best Practices Adherence**: The project follows principles of decoupling, modularization, and monitoring.
+This project implements a sentiment analysis pipeline using Google Cloud Functions and Pub/Sub to process user feedback messages. The pipeline analyzes sentiment using the Google Cloud Natural Language API and sends alerts to Slack based on the sentiment category.
 
 ## Project Structure
-- **vmside/**: Contains the server-side code for the MT5 application.
-- **src/**: Contains the main source code for the pipeline.
-  - **config/**: Configuration settings for the project.
-  - **connectors/**: Modules for connecting to external services (e.g., BigQuery).
-  - **processors/**: Logic for processing incoming data.
-  - **cloud_functions/**: Cloud Functions for handling HTTP requests and Pub/Sub messages.
-  - **utils/**: Utility functions for logging and other common tasks.
-- **dashboard/**: Contains the dashboard application for visualizing processed data.
-- **terraform/**: Infrastructure as Code (IaC) configuration for deploying resources on GCP.
-- **tests/**: Unit tests for ensuring code quality and reliability.
-- **requirements.txt**: Lists project dependencies.
-- **Dockerfile**: Instructions for building a Docker image for the project.
 
-## Instructions for Deployment
-1. **Clone the Repository**: 
+```
+sentiment-analysis-pipeline
+├── functions
+│   ├── pubsub-receiver
+│   │   ├── main.py          # Receiver Function implementation
+│   │   └── requirements.txt  # Dependencies for Receiver Function
+│   ├── pubsub-positive-analyzer
+│   │   ├── main.py          # Positive Analyzer Function implementation
+│   │   └── requirements.txt  # Dependencies for Positive Analyzer Function
+│   └── pubsub-negative-analyzer
+│       ├── main.py          # Negative Analyzer Function implementation
+│       └── requirements.txt  # Dependencies for Negative Analyzer Function
+├── terraform
+│   ├── main.tf              # Terraform configuration for infrastructure
+│   ├── variables.tf         # Variables for Terraform configuration
+│   └── outputs.tf           # Outputs of the Terraform configuration
+├── tests
+│   └── test_functions.py     # Unit tests for the functions
+├── .env.example              # Example environment variables
+├── .gitignore                # Git ignore file
+└── README.md                 # Project documentation
+```
+
+## Setup Instructions
+
+1. **Clone the repository:**
    ```
    git clone <repository-url>
-   cd mt5-trading-pipeline
+   cd sentiment-analysis-pipeline
    ```
 
-2. **Set Up Environment**: 
-   - Create a virtual environment and activate it.
-   - Install dependencies:
-     ```
-     pip install -r requirements.txt
-     ```
+2. **Set up Google Cloud:**
+   - Create a Google Cloud project.
+   - Enable the Google Cloud Pub/Sub and Natural Language APIs.
+   - Set up authentication and create a service account with the necessary permissions.
 
-3. **Configure Settings**: 
-   - Update `src/config/settings.py` with your API keys and database connection strings.
-
-4. **Deploy Infrastructure**: 
-   - Navigate to the `terraform` directory and run:
+3. **Configure Terraform:**
+   - Update the `terraform/variables.tf` file with your project ID and region.
+   - Run the following commands to deploy the infrastructure:
      ```
+     cd terraform
      terraform init
      terraform apply
      ```
 
-5. **Deploy a vm with mt5 inside and connect to it**: 
-   - Use the provided scripts in `vmside/` to set up the MT5 server.
-   - Ensure the server is running and accessible.
+4. **Set up environment variables:**
+   - Copy `.env.example` to `.env` and fill in the required values, including the Slack bot token.
 
+5. **Install dependencies:**
+   - For each function, navigate to the respective directory and install the required dependencies:
+     ```
+     cd functions/pubsub-receiver
+     pip install -r requirements.txt
+     cd ../pubsub-positive-analyzer
+     pip install -r requirements.txt
+     cd ../pubsub-negative-analyzer
+     pip install -r requirements.txt
+     ```
 
+## Usage
+
+- **Receiver Function:**
+  - Endpoint: `https://us-central1-[PROJECT_ID].cloudfunctions.net/receiver`
+  - Method: `POST`
+  - Body (JSON):
+    - Positive: `{"user_id": "test@example.com", "message": "I love this!"}`
+    - Neutral: `{"user_id": "test@example.com", "message": "It’s okay."}`
+    - Negative: `{"user_id": "test@example.com", "message": "This isn’t working."}`
+
+- **Expected Behavior:**
+  - Positive message → Slack #followup
+  - Negative message → Slack #support
+  - Neutral message → No action
+
+## Testing
+
+- Unit tests are located in the `tests/test_functions.py` file. You can run the tests using:
+  ```
+  python -m unittest discover -s tests
+  ```
+
+## License
+
+This project is licensed under the MIT License.

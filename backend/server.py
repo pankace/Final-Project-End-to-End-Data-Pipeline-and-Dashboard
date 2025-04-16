@@ -28,11 +28,11 @@ dotenv_path = os.path.join(current_dir, '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 # Import your MT5 classes
-from mt5_base import MT5Base, SymbolPrice
-from mt5_trading import MT5Trading
+from mt5_code.mt5_base import MT5Base, SymbolPrice
+from mt5_code.mt5_trading import MT5Trading
 # Import your MT5 classes
-from mt5_base import MT5Base, SymbolPrice
-from mt5_trading import MT5Trading
+from mt5_code.mt5_base import MT5Base, SymbolPrice
+from mt5_code.mt5_trading import MT5Trading
 
 # Configure logging
 logging.basicConfig(

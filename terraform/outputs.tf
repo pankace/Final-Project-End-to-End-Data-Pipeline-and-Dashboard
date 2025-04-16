@@ -1,34 +1,31 @@
-output "project_id" {
-  description = "The GCP project ID"
-  value       = var.project_id
-}
-
-output "region" {
-  description = "The GCP region"
-  value       = var.region
-}
-
-output "bigquery_dataset" {
-  description = "The BigQuery dataset ID"
-  value       = var.create_bigquery_dataset ? google_bigquery_dataset.mt5_trading[0].dataset_id : "Dataset not created"
-}
-
 output "pubsub_topic_name" {
-  description = "The name of the Pub/Sub topic"
-  value       = var.create_pubsub_topic ? google_pubsub_topic.mt5_topic[0].name : "Topic not created"
+  value = google_pubsub_topic.feedback_topic.name
 }
 
-output "cloud_function_http_url" {
-  description = "The HTTPS URL for the HTTP-triggered Cloud Function"
-  value       = var.create_http_function ? google_cloudfunctions2_function.http_function[0].service_config[0].uri : "Function not created"
+output "positive_subscription_name" {
+  value = google_pubsub_subscription.positive_sub.name
 }
 
-output "cloud_function_pubsub_name" {
-  description = "The name of the Pub/Sub-triggered Cloud Function"
-  value       = var.create_pubsub_function ? google_cloudfunctions2_function.pubsub_function[0].name : "Function not created"
+output "negative_subscription_name" {
+  value = google_pubsub_subscription.negative_sub.name
 }
 
-output "cloud_function_bucket_name" {
-  description = "The name of the GCS bucket storing function source code"
-  value       = var.create_storage_bucket ? google_storage_bucket.function_bucket[0].name : "Bucket not created"
+output "receiver_function_url" {
+  value       = google_cloudfunctions_function.receiver_function.https_trigger_url
+  description = "The URL of the receiver function"
+}
+
+output "feedback_topic" {
+  value       = google_pubsub_topic.feedback_topic.name
+  description = "The name of the feedback topic"
+}
+
+output "positive_subscription" {
+  value       = google_pubsub_subscription.positive_sub.name
+  description = "The name of the positive feedback subscription"
+}
+
+output "negative_subscription" {
+  value       = google_pubsub_subscription.negative_sub.name
+  description = "The name of the negative feedback subscription"
 }
