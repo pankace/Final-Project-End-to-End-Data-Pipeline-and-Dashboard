@@ -10,15 +10,18 @@ output "bigquery_dataset" {
 
 output "positions_table" {
   description = "BigQuery table for positions data"
-  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.positions.table_id}"
+  # Reference the data source for the table ID
+  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${data.google_bigquery_table.positions.table_id}"
 }
 
 output "transactions_table" {
   description = "BigQuery table for transactions data"
-  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.transactions.table_id}"
+  # Reference the data source for the table ID
+  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${data.google_bigquery_table.transactions.table_id}"
 }
 
 output "prices_table" {
   description = "BigQuery table for price updates data"
-  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.price_updates.table_id}"
+  # Reference the data source for the table ID
+  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${data.google_bigquery_table.price_updates.table_id}"
 }
