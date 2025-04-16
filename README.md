@@ -21,6 +21,7 @@ This project implements a **streaming pipeline** to ingest real-time data into t
 - **Best Practices Adherence**: The project follows principles of decoupling, modularization, and monitoring.
 
 ## Project Structure
+- **vmside/**: Contains the server-side code for the MT5 application.
 - **src/**: Contains the main source code for the pipeline.
   - **config/**: Configuration settings for the project.
   - **connectors/**: Modules for connecting to external services (e.g., BigQuery).
@@ -57,18 +58,8 @@ This project implements a **streaming pipeline** to ingest real-time data into t
      terraform apply
      ```
 
-5. **Run the Dashboard**: 
-   - Start the dashboard application:
-     ```
-     python dashboard/app.py
-     ```
+5. **Deploy a vm with mt5 inside and connect to it**: 
+   - Use the provided scripts in `vmside/` to set up the MT5 server.
+   - Ensure the server is running and accessible.
 
-## Limitations
-- The project currently relies on simulated data for testing purposes. Future iterations may include integration with live data sources.
-- Ensure that any web scraping complies with the target website's terms of service.
 
-## Final Dashboard
-A link to the final dashboard will be provided upon completion of the project.
-
-## Conclusion
-This project serves as a comprehensive demonstration of the data engineering lifecycle, showcasing the ability to build a scalable and reliable data pipeline on Google Cloud Platform.

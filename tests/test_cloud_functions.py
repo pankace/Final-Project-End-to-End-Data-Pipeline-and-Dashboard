@@ -1,5 +1,6 @@
 import json
 import pytest
+import base64
 from unittest.mock import patch
 from src.cloud_functions.http_function import process_mt5_data
 from src.cloud_functions.pubsub_function import process_mt5_pubsub
