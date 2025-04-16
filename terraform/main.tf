@@ -30,9 +30,33 @@ resource "google_storage_bucket_object" "mt5_function_zip" {
 //  BigQuery Dataset (data source)
 ////////////////////////////////////
 
-data "google_bigquery_dataset" "mt5_trading" {
-  dataset_id = "mt5_trading"
-  project    = var.project_id
+// Replace the data source with a resource to create the dataset
+resource "google_bigquery_dataset" "mt5_trading" {
+  dataset_id  = "mt5_trading"
+  description = "Dataset for MT5 trading data"
+  location    = "US"  // You can change this to your preferred location
+  project     = var.project_id
+
+  // Optional: add labels
+  labels = {
+    environment = "production"
+  }
+
+  // Optional: add access controls if needed
+  access {
+    role          = "OWNER"
+    special_group = "projectOwners"
+  }
+  
+  access {
+    role          = "WRITER"
+    special_group = "projectWriters"
+  }
+  
+  access {
+    role          = "READER"
+    special_group = "projectReaders"
+  }
 }
 
 /////////////////////////////////////////////////
@@ -40,7 +64,7 @@ data "google_bigquery_dataset" "mt5_trading" {
 /////////////////////////////////////////////////
 
 resource "google_bigquery_table" "positions" {
-  dataset_id         = data.google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id         =  google_bigquery_dataset.mt5_trading.dataset_id
   table_id           = "positions"
   project            = var.project_id
   deletion_protection = false
@@ -105,7 +129,7 @@ EOF
 }
 
 resource "google_bigquery_table" "transactions" {
-  dataset_id         = data.google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id         = google_bigquery_dataset.mt5_trading.dataset_id
   table_id           = "transactions"
   project            = var.project_id
   deletion_protection = false
@@ -170,7 +194,7 @@ EOF
 }
 
 resource "google_bigquery_table" "price_updates" {
-  dataset_id         = data.google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id         = google_bigquery_dataset.mt5_trading.dataset_id
   table_id           = "price_updates"
   project            = var.project_id
   deletion_protection = false
