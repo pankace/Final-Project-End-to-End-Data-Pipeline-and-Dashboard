@@ -72,7 +72,7 @@ resource "google_pubsub_topic" "mt5_topic" {
   name = "mt5-trading-topic"
   
   lifecycle {
-    prevent_destroy = true
+    #prevent_destroy = true
     ignore_changes = [
       labels,
       kms_key_name,
@@ -196,13 +196,18 @@ data "archive_file" "pubsub_function_source" {
 }
 
 # Upload the function source to the bucket
+# Upload the function source to the bucket - only create if bucket exists
 resource "google_storage_bucket_object" "http_function_zip" {
+  count  = var.create_storage_bucket ? 1 : 0
+  
   name   = "http_function-${data.archive_file.http_function_source.output_md5}.zip"
   bucket = google_storage_bucket.function_bucket[0].name
   source = data.archive_file.http_function_source.output_path
 }
 
 resource "google_storage_bucket_object" "pubsub_function_zip" {
+  count  = var.create_storage_bucket ? 1 : 0
+  
   name   = "pubsub_function-${data.archive_file.pubsub_function_source.output_md5}.zip"
   bucket = google_storage_bucket.function_bucket[0].name
   source = data.archive_file.pubsub_function_source.output_path

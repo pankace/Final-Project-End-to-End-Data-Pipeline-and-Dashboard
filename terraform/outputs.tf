@@ -32,5 +32,5 @@ output "cloud_function_pubsub_name" {
 
 output "cloud_function_bucket_name" {
   description = "The name of the GCS bucket storing function source code"
-  value       = google_storage_bucket.function_bucket[0].name
+  value       = var.create_storage_bucket ? google_storage_bucket.function_bucket[0].name : "Bucket not created"
 }
