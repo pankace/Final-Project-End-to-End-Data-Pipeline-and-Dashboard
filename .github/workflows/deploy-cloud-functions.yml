@@ -43,23 +43,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install google-cloud-bigquery google-cloud-pubsub functions-framework
 
-    - name: Install Python dependencies for functions
-      run: |
-        cd function_deploy/http_function
-        pip install functions-framework -t .
-        cd ../../function_deploy/pubsub_function
-        pip install functions-framework -t .
 
-    - name: Add requirements.txt for functions
-      run: |
-        cat > function_deploy/http_function/requirements.txt << EOF
-        functions-framework==3.*
-        google-cloud-bigquery==3.*
-        google-cloud-pubsub==2.*
-        EOF
-
-        cp function_deploy/http_function/requirements.txt function_deploy/pubsub_function/requirements.txt
-    
     - name: Authenticate to Google Cloud
       uses: 'google-github-actions/auth@v1'
       with:
@@ -245,6 +229,25 @@ jobs:
         # Print directory structure for verification
         echo "Function deployment directories prepared:"
         find function_deploy -type f | sort
+
+    - name: Install Python dependencies for functions
+      run: |
+        cd function_deploy/http_function
+        pip install functions-framework -t .
+        cd ../../function_deploy/pubsub_function
+        pip install functions-framework -t .
+
+    - name: Add requirements.txt for functions
+      run: |
+        cat > function_deploy/http_function/requirements.txt << EOF
+        functions-framework==3.*
+        google-cloud-bigquery==3.*
+        google-cloud-pubsub==2.*
+        EOF
+
+        cp function_deploy/http_function/requirements.txt function_deploy/pubsub_function/requirements.txt
+    
+    
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
       with:

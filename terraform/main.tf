@@ -277,7 +277,7 @@ resource "google_cloudfunctions2_function" "pubsub_function" {
   }
 
   service_config {
-    max_instance_count = 10
+    max_instance_count = 60
     min_instance_count = 0
     available_memory   = "${var.cloud_function_memory}M"
     timeout_seconds    = var.cloud_function_timeout
