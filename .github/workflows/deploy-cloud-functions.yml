@@ -15,6 +15,11 @@ env:
   REGION: us-central1
   SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
   TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+  GCS_FUNCTION_BUCKET: "${{ secrets.GCP_PROJECT_ID }}-function-bucket"
+  BQ_DATASET: "mt5_trading"
+  PUBSUB_TOPIC: "mt5-trading-topic"
+  HTTP_FUNCTION_NAME: "mt5-http-function"
+  PUBSUB_FUNCTION_NAME: "mt5-pubsub-function"
 
 jobs:
   deploy:
@@ -45,7 +50,53 @@ jobs:
 
     - name: Set up Cloud SDK
       uses: 'google-github-actions/setup-gcloud@v1'
-      # Removed the incorrect component installation
+
+    - name: Check for existing resources
+      id: check-resources
+      run: |
+        # Check BigQuery dataset
+        if gcloud bigquery datasets describe ${{ env.BQ_DATASET }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
+          echo "BQ_DATASET_EXISTS=true" >> $GITHUB_ENV
+          echo "BigQuery dataset ${{ env.BQ_DATASET }} exists"
+        else
+          echo "BQ_DATASET_EXISTS=false" >> $GITHUB_ENV
+          echo "BigQuery dataset ${{ env.BQ_DATASET }} does not exist"
+        fi
+        
+        # Check GCS bucket
+        if gsutil ls -p ${{ env.PROJECT_ID }} gs://${{ env.GCS_FUNCTION_BUCKET }} &> /dev/null; then
+          echo "BUCKET_EXISTS=true" >> $GITHUB_ENV
+          echo "GCS bucket ${{ env.GCS_FUNCTION_BUCKET }} exists"
+        else
+          echo "BUCKET_EXISTS=false" >> $GITHUB_ENV
+          echo "GCS bucket ${{ env.GCS_FUNCTION_BUCKET }} does not exist"
+        fi
+        
+        # Check Pub/Sub topic
+        if gcloud pubsub topics describe ${{ env.PUBSUB_TOPIC }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
+          echo "TOPIC_EXISTS=true" >> $GITHUB_ENV
+          echo "Pub/Sub topic ${{ env.PUBSUB_TOPIC }} exists"
+        else
+          echo "TOPIC_EXISTS=false" >> $GITHUB_ENV
+          echo "Pub/Sub topic ${{ env.PUBSUB_TOPIC }} does not exist"
+        fi
+        
+        # Check Cloud Functions
+        if gcloud functions describe ${{ env.HTTP_FUNCTION_NAME }} --gen2 --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
+          echo "HTTP_FUNCTION_EXISTS=true" >> $GITHUB_ENV
+          echo "Cloud function ${{ env.HTTP_FUNCTION_NAME }} exists"
+        else
+          echo "HTTP_FUNCTION_EXISTS=false" >> $GITHUB_ENV
+          echo "Cloud function ${{ env.HTTP_FUNCTION_NAME }} does not exist"
+        fi
+        
+        if gcloud functions describe ${{ env.PUBSUB_FUNCTION_NAME }} --gen2 --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} &> /dev/null; then
+          echo "PUBSUB_FUNCTION_EXISTS=true" >> $GITHUB_ENV
+          echo "Cloud function ${{ env.PUBSUB_FUNCTION_NAME }} exists"
+        else
+          echo "PUBSUB_FUNCTION_EXISTS=false" >> $GITHUB_ENV
+          echo "Cloud function ${{ env.PUBSUB_FUNCTION_NAME }} does not exist"
+        fi
 
     - name: Prepare function deployment directories
       run: |
@@ -99,7 +150,6 @@ jobs:
         terraform_version: 1.0.0
         terraform_wrapper: false
 
-
     - name: Terraform Init
       working-directory: terraform
       run: |
@@ -107,36 +157,86 @@ jobs:
           -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
           -backend-config="prefix=terraform/state"
 
-    # Conditionally create terraform.tfvars file based on what exists
+    - name: Check Terraform state
+      working-directory: terraform
+      run: |
+        # List resources in state
+        echo "Resources currently in Terraform state:"
+        terraform state list || echo "No resources in state"
+        
+        # If needed, remove resources from state to allow re-importing
+        RESOURCES_TO_REMOVE=()
+        
+        if [ "${{ env.BQ_DATASET_EXISTS }}" == "true" ]; then
+          RESOURCES_TO_REMOVE+=(google_bigquery_dataset.mt5_trading[0])
+        fi
+        
+        if [ "${{ env.BUCKET_EXISTS }}" == "true" ]; then
+          RESOURCES_TO_REMOVE+=(google_storage_bucket.function_bucket[0])
+        fi
+        
+        if [ "${{ env.TOPIC_EXISTS }}" == "true" ]; then
+          RESOURCES_TO_REMOVE+=(google_pubsub_topic.mt5_topic[0])
+        fi
+        
+        if [ "${{ env.HTTP_FUNCTION_EXISTS }}" == "true" ]; then
+          RESOURCES_TO_REMOVE+=(google_cloudfunctions2_function.http_function[0])
+        fi
+        
+        if [ "${{ env.PUBSUB_FUNCTION_EXISTS }}" == "true" ]; then
+          RESOURCES_TO_REMOVE+=(google_cloudfunctions2_function.pubsub_function[0])
+        fi
+        
+        # Remove resources from state if they already exist
+        for resource in "${RESOURCES_TO_REMOVE[@]}"; do
+          echo "Removing $resource from state to allow re-import"
+          terraform state rm "$resource" || echo "Resource $resource not in state"
+        done
+
     - name: Set Terraform environment variables
       run: |
         echo "TF_VAR_project_id=${{ env.PROJECT_ID }}" >> $GITHUB_ENV
         echo "TF_VAR_region=${{ env.REGION }}" >> $GITHUB_ENV
         echo "TF_VAR_service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}" >> $GITHUB_ENV
+        echo "TF_VAR_bigquery_dataset=${{ env.BQ_DATASET }}" >> $GITHUB_ENV
+        echo "TF_VAR_cloud_function_memory=256" >> $GITHUB_ENV
+        echo "TF_VAR_cloud_function_timeout=60" >> $GITHUB_ENV
+        
+        # Set create_* variables based on what exists - set to false for existing resources
         echo "TF_VAR_create_bigquery_dataset=${{ env.BQ_DATASET_EXISTS == 'false' }}" >> $GITHUB_ENV
         echo "TF_VAR_create_storage_bucket=${{ env.BUCKET_EXISTS == 'false' }}" >> $GITHUB_ENV
         echo "TF_VAR_create_pubsub_topic=${{ env.TOPIC_EXISTS == 'false' }}" >> $GITHUB_ENV
         echo "TF_VAR_create_http_function=${{ env.HTTP_FUNCTION_EXISTS == 'false' }}" >> $GITHUB_ENV
         echo "TF_VAR_create_pubsub_function=${{ env.PUBSUB_FUNCTION_EXISTS == 'false' }}" >> $GITHUB_ENV
-        echo "TF_VAR_bigquery_dataset=mt5_trading" >> $GITHUB_ENV
-        echo "TF_VAR_cloud_function_memory=256" >> $GITHUB_ENV
-        echo "TF_VAR_cloud_function_timeout=60" >> $GITHUB_ENV
 
-    - name: Import existing resources and handle failures
+    - name: Import existing resources
       working-directory: terraform
       run: |
-        # Set defaults - assume resources don't exist
-        echo 'BQ_DATASET_EXISTS=false' >> $GITHUB_ENV
-        echo 'BUCKET_EXISTS=false' >> $GITHUB_ENV
-        echo 'TOPIC_EXISTS=false' >> $GITHUB_ENV
-        echo 'HTTP_FUNCTION_EXISTS=false' >> $GITHUB_ENV
-        echo 'PUBSUB_FUNCTION_EXISTS=false' >> $GITHUB_ENV
+        # Only import resources that exist but aren't in state
+        if [ "${{ env.BQ_DATASET_EXISTS }}" == "true" ]; then
+          echo "Importing BigQuery dataset..."
+          terraform import google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:${{ env.BQ_DATASET }} || echo "Failed to import BigQuery dataset"
+        fi
         
-        # Pass individual variables for import commands
-        terraform import -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}" \
-          google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:mt5_trading && \
-          echo 'BQ_DATASET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import BigQuery dataset"
+        if [ "${{ env.BUCKET_EXISTS }}" == "true" ]; then
+          echo "Importing storage bucket..."
+          terraform import google_storage_bucket.function_bucket[0] ${{ env.GCS_FUNCTION_BUCKET }} || echo "Failed to import storage bucket"
+        fi
         
+        if [ "${{ env.TOPIC_EXISTS }}" == "true" ]; then
+          echo "Importing Pub/Sub topic..."
+          terraform import google_pubsub_topic.mt5_topic[0] projects/${{ env.PROJECT_ID }}/topics/${{ env.PUBSUB_TOPIC }} || echo "Failed to import Pub/Sub topic"
+        fi
+        
+        if [ "${{ env.HTTP_FUNCTION_EXISTS }}" == "true" ]; then
+          echo "Importing HTTP function..."
+          terraform import google_cloudfunctions2_function.http_function[0] projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/${{ env.HTTP_FUNCTION_NAME }} || echo "Failed to import HTTP function"
+        fi
+        
+        if [ "${{ env.PUBSUB_FUNCTION_EXISTS }}" == "true" ]; then
+          echo "Importing PubSub function..."
+          terraform import google_cloudfunctions2_function.pubsub_function[0] projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/${{ env.PUBSUB_FUNCTION_NAME }} || echo "Failed to import PubSub function"
+        fi
 
     - name: Terraform Validate
       working-directory: terraform
@@ -145,7 +245,7 @@ jobs:
     - name: Terraform Plan
       working-directory: terraform
       run: terraform plan
-      
+
     - name: Terraform Apply
       working-directory: terraform
       run: terraform apply -auto-approve
