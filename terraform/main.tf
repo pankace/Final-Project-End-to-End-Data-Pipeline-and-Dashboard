@@ -22,11 +22,35 @@ resource "google_storage_bucket_object" "mt5_function_zip" {
   source = data.archive_file.mt5_to_cloudfunction.output_path
 }
 
-# Use data source to reference the existing BigQuery dataset
+
+
+// Existing dataset
 data "google_bigquery_dataset" "mt5_trading" {
   dataset_id = "mt5_trading"
   project    = var.project_id
 }
+
+// ---------------------------------------
+// DATA Resources for existing tables
+// ---------------------------------------
+data "google_bigquery_table" "positions" {
+  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
+  table_id   = "positions"
+  project    = var.project_id
+}
+
+data "google_bigquery_table" "transactions" {
+  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
+  table_id   = "transactions"
+  project    = var.project_id
+}
+
+data "google_bigquery_table" "price_updates" {
+  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
+  table_id   = "price_updates"
+  project    = var.project_id
+}
+
 
 # Create or update BigQuery tables
 resource "google_bigquery_table" "positions" {
@@ -204,6 +228,7 @@ EOF
 # Use data source to reference existing service account
 data "google_service_account" "function_account" {
   account_id = "mt5-function-sa"
+  project    = var.project_id # Add project ID for clarity
 }
 
 # We'll use additive IAM bindings to avoid conflicts

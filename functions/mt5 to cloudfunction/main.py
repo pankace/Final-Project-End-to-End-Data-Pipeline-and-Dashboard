@@ -24,6 +24,7 @@ except Exception as e:
     # Still create a variable to prevent errors, but we'll check it later
     bq_client = None
 
+
 @functions_framework.http
 def receive_message(request):
     """HTTP Cloud Function that receives MT5 data and inserts into BigQuery."""
@@ -113,4 +114,3 @@ def receive_message(request):
     
 
 
-    
