@@ -7,7 +7,7 @@ on:
     paths:
       - 'functions/mt5 to cloudfunction/**'
       - 'terraform/**'
-      - '.github/workflows/mt5-bigquery-deployment.yml'
+      - '.github/workflows/google-cloudrun-docker.yml'
   workflow_dispatch:  # Allows manual triggering
 
 env:
@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Google Auth
         uses: google-github-actions/auth@v1
@@ -69,7 +69,7 @@ jobs:
           terraform output -raw mt5_function_url > function_url.txt
           
       - name: Upload Function URL artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Updated from v3 to v4
         with:
           name: function-url
           path: ./terraform/function_url.txt
@@ -82,7 +82,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Updated from v3 to v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -97,7 +97,7 @@ jobs:
           pip install websockets==10.4 python-dotenv==0.21.0 requests==2.28.2 backoff==2.2.1 google-cloud-bigquery==3.11.4
           
       - name: Download function URL
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # Updated from v3 to v4
         with:
           name: function-url
           
