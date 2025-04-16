@@ -83,6 +83,7 @@ resource "google_pubsub_topic" "mt5_topic" {
 
 # BigQuery tables
 resource "google_bigquery_table" "positions" {
+  count = var.create_bigquery_dataset ? 1 : 0
   dataset_id = google_bigquery_dataset.mt5_trading[0].dataset_id
   table_id   = "positions"
 
@@ -215,7 +216,8 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
 
 # HTTP Function (Gen 2)
 resource "google_cloudfunctions2_function" "http_function" {
-  count = var.create_http_function ? 1 : 0
+  count = var.create_http_function && var.create_storage_bucket ? 1 : 0
+
 
   name        = "mt5-http-function"
   location    = var.region
