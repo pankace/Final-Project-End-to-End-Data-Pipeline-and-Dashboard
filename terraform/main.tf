@@ -3,13 +3,33 @@ provider "google" {
   region  = var.region
 }
 
+#resource "google_bigquery_dataset" "mt5_trading" {
+#  dataset_id = "mt5_trading"
+#  location   = var.region
+#}
 resource "google_bigquery_dataset" "mt5_trading" {
+  count = var.create_bigquery_dataset ? 1 : 0
+  
   dataset_id = "mt5_trading"
   location   = var.region
 }
 
+resource "google_storage_bucket" "function_bucket" {
+  count = var.create_storage_bucket ? 1 : 0
+  
+  name     = "${var.project_id}-function-bucket"
+  location = var.region
+  uniform_bucket_level_access = true
+}
+
+resource "google_pubsub_topic" "mt5_topic" {
+  count = var.create_pubsub_topic ? 1 : 0
+  
+  name = "mt5-trading-topic"
+}
+
 resource "google_bigquery_table" "positions" {
-  dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id = google_bigquery_dataset.mt5_trading[0].dataset_id
   table_id   = "positions"
 
   schema = jsonencode([
@@ -62,7 +82,7 @@ resource "google_bigquery_table" "positions" {
 }
 
 resource "google_bigquery_table" "transactions" {
-  dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id = google_bigquery_dataset.mt5_trading[0].dataset_id
   table_id   = "transactions"
 
   schema = jsonencode([
@@ -115,7 +135,7 @@ resource "google_bigquery_table" "transactions" {
 }
 
 resource "google_bigquery_table" "price_updates" {
-  dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id = google_bigquery_dataset.mt5_trading[0].dataset_id
   table_id   = "price_updates"
 
   schema = jsonencode([

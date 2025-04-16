@@ -37,3 +37,21 @@ variable "service_account_email" {
   description = "The email of the service account used for authentication"
   type        = string
 }
+
+variable "create_bigquery_dataset" {
+  description = "Whether to create the BigQuery dataset"
+  type        = bool
+  default     = true
+}
+
+variable "create_storage_bucket" {
+  description = "Whether to create the storage bucket"
+  type        = bool
+  default     = true
+}
+
+variable "create_pubsub_topic" {
+  description = "Whether to create the Pub/Sub topic"
+  type        = bool
+  default     = true
+}

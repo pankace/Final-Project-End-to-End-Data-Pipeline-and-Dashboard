@@ -109,23 +109,43 @@ jobs:
     - name: Terraform Validate
       working-directory: terraform
       run: terraform validate
-
-    - name: Import existing resources
+      
+    - name: Import existing resources and handle failures
       working-directory: terraform
       run: |
-        # Try to import existing resources - continue on errors
-        terraform import google_bigquery_dataset.mt5_trading ${{ env.PROJECT_ID }}:mt5_trading || true
-        terraform import google_storage_bucket.function_bucket ${{ env.PROJECT_ID }}-function-bucket || true
-        terraform import google_pubsub_topic.mt5_topic projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic || true
+        # Import existing resources and save success/failure status
+        terraform import google_bigquery_dataset.mt5_trading ${{ env.PROJECT_ID }}:mt5_trading && \
+          echo 'BQ_DATASET_EXISTS=true' >> $GITHUB_ENV || echo 'BQ_DATASET_EXISTS=false' >> $GITHUB_ENV
+          
+        terraform import google_storage_bucket.function_bucket ${{ env.PROJECT_ID }}-function-bucket && \
+          echo 'BUCKET_EXISTS=true' >> $GITHUB_ENV || echo 'BUCKET_EXISTS=false' >> $GITHUB_ENV
+          
+        terraform import google_pubsub_topic.mt5_topic projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic && \
+          echo 'TOPIC_EXISTS=true' >> $GITHUB_ENV || echo 'TOPIC_EXISTS=false' >> $GITHUB_ENV
+
+    # Conditionally create terraform.tfvars file based on what exists
+    - name: Create terraform.tfvars
+      working-directory: terraform
+      run: |
+        cat > terraform.tfvars << EOF
+        project_id = "${{ env.PROJECT_ID }}"
+        region = "${{ env.REGION }}"
+        service_account_email = "${{ env.SERVICE_ACCOUNT_EMAIL }}"
+        create_bigquery_dataset = ${{ env.BQ_DATASET_EXISTS == 'false' }}
+        create_storage_bucket = ${{ env.BUCKET_EXISTS == 'false' }}
+        create_pubsub_topic = ${{ env.TOPIC_EXISTS == 'false' }}
+        EOF
+        
+        cat terraform.tfvars
 
     - name: Terraform Plan
       working-directory: terraform
-      run: terraform plan -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
+      run: terraform plan -var-file=terraform.tfvars
       
     - name: Terraform Apply
       working-directory: terraform
-      run: terraform apply -auto-approve -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}"
-      
+      run: terraform apply -auto-approve -var-file=terraform.tfvars
+
     - name: Output deployed function details
       working-directory: terraform
       run: |
