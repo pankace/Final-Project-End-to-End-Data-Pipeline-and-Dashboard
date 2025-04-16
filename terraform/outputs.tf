@@ -10,12 +10,12 @@ output "region" {
 
 output "bigquery_dataset" {
   description = "The BigQuery dataset ID"
-  value       = google_bigquery_dataset.mt5_trading.dataset_id
+  value       = google_bigquery_dataset.mt5_trading[0].dataset_id
 }
 
 output "pubsub_topic_name" {
   description = "The name of the Pub/Sub topic"
-  value       = google_pubsub_topic.mt5_topic.name
+  value       = google_pubsub_topic.mt5_topic[0].name
 }
 
 output "cloud_function_http_url" {
@@ -32,5 +32,5 @@ output "cloud_function_pubsub_name" {
 
 output "cloud_function_bucket_name" {
   description = "The name of the GCS bucket storing function source code"
-  value       = google_storage_bucket.function_bucket.name
+  value       = google_storage_bucket.function_bucket[0].name
 }
