@@ -97,6 +97,29 @@ jobs:
           echo "PUBSUB_FUNCTION_EXISTS=false" >> $GITHUB_ENV
           echo "Cloud function ${{ env.PUBSUB_FUNCTION_NAME }} does not exist"
         fi
+    - name: Prepare cloud functions directories
+      run: |
+        # Create function directories with proper structure
+        mkdir -p function_deploy/http_function/processors
+        mkdir -p function_deploy/http_function/connectors
+        mkdir -p function_deploy/http_function/config
+        mkdir -p function_deploy/pubsub_function/processors
+        mkdir -p function_deploy/pubsub_function/connectors
+        mkdir -p function_deploy/pubsub_function/config
+        
+        # Create empty __init__.py files to make directories packages
+        touch function_deploy/http_function/__init__.py
+        touch function_deploy/http_function/processors/__init__.py
+        touch function_deploy/http_function/connectors/__init__.py
+        touch function_deploy/http_function/config/__init__.py
+        
+        # Copy and fix files
+        cp src/processors/price_processor.py function_deploy/http_function/processors/
+        cp src/processors/trade_processor.py function_deploy/http_function/processors/
+        cp src/connectors/bigquery_client.py function_deploy/http_function/connectors/
+        
+        # Fix imports in all files
+        find function_deploy -name "*.py" -exec sed -i 's/from src\./from /g' {} \;
 
     - name: Prepare function deployment directories
       run: |
@@ -262,38 +285,38 @@ jobs:
         echo "TF_VAR_bigquery_dataset=${{ env.BQ_DATASET }}" >> $GITHUB_ENV
         echo "TF_VAR_cloud_function_memory=256" >> $GITHUB_ENV
         echo "TF_VAR_cloud_function_timeout=60" >> $GITHUB_ENV
-        
+
         # Set create_* variables explicitly based on existence check
         if [ "${{ env.BQ_DATASET_EXISTS }}" = "false" ]; then
           echo "TF_VAR_create_bigquery_dataset=true" >> $GITHUB_ENV
         else
           echo "TF_VAR_create_bigquery_dataset=false" >> $GITHUB_ENV
         fi
-        
+
         if [ "${{ env.BUCKET_EXISTS }}" = "false" ]; then
           echo "TF_VAR_create_storage_bucket=true" >> $GITHUB_ENV
         else
           echo "TF_VAR_create_storage_bucket=false" >> $GITHUB_ENV
         fi
-        
+
         if [ "${{ env.TOPIC_EXISTS }}" = "false" ]; then
           echo "TF_VAR_create_pubsub_topic=true" >> $GITHUB_ENV
         else
           echo "TF_VAR_create_pubsub_topic=false" >> $GITHUB_ENV
         fi
-        
+
         if [ "${{ env.HTTP_FUNCTION_EXISTS }}" = "false" ]; then
           echo "TF_VAR_create_http_function=true" >> $GITHUB_ENV
         else
           echo "TF_VAR_create_http_function=false" >> $GITHUB_ENV
         fi
-        
+
         if [ "${{ env.PUBSUB_FUNCTION_EXISTS }}" = "false" ]; then
           echo "TF_VAR_create_pubsub_function=true" >> $GITHUB_ENV
         else
           echo "TF_VAR_create_pubsub_function=false" >> $GITHUB_ENV
         fi
-        
+
         # Debug - print all environment variables
         echo "Variables set for Terraform:"
         echo "TF_VAR_create_bigquery_dataset: $TF_VAR_create_bigquery_dataset"

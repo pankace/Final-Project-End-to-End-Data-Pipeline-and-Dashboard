@@ -48,4 +48,4 @@ def process_price_update(data, bq_client):
         
     except Exception as e:
         logger.error(f"Error processing price update: {e}", exc_info=True)
-        raise
+        raise f"Error: {str(e)}"  

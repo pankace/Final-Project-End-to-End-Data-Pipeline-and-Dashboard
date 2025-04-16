@@ -41,7 +41,7 @@ resource "google_bigquery_dataset" "mt5_trading" {
 # Storage bucket for Cloud Functions source code
 # Storage bucket for Cloud Functions source code
 resource "google_storage_bucket" "function_bucket" {
-  count = var.create_storage_bucket ? 1 : 0
+  count = 1
   
   name     = "${var.project_id}-function-bucket"
   location = var.region
@@ -67,7 +67,7 @@ resource "google_storage_bucket" "function_bucket" {
 
 # Pub/Sub topic for MT5 updates
 resource "google_pubsub_topic" "mt5_topic" {
-  count = var.create_pubsub_topic ? 1 : 0
+  count = 1
   
   name = "mt5-trading-topic"
   
@@ -199,7 +199,7 @@ data "archive_file" "pubsub_function_source" {
 # Upload the function source to the bucket
 # Upload the function source to the bucket - only create if bucket exists
 resource "google_storage_bucket_object" "http_function_zip" {
-  count  = var.create_storage_bucket ? 1 : 0
+  count  = 1
   
   name   = "http_function-${data.archive_file.http_function_source.output_md5}.zip"
   bucket = google_storage_bucket.function_bucket[0].name
@@ -207,7 +207,7 @@ resource "google_storage_bucket_object" "http_function_zip" {
 }
 
 resource "google_storage_bucket_object" "pubsub_function_zip" {
-  count  = var.create_storage_bucket ? 1 : 0
+  count  = 1
   
   name   = "pubsub_function-${data.archive_file.pubsub_function_source.output_md5}.zip"
   bucket = google_storage_bucket.function_bucket[0].name
@@ -216,8 +216,7 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
 
 # HTTP Function (Gen 2)
 resource "google_cloudfunctions2_function" "http_function" {
-  count = var.create_http_function ? 1 : 0
-
+  count = 1
 
   name        = "mt5-http-function"
   location    = var.region
