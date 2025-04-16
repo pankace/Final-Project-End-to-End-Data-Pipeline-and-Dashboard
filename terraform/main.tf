@@ -39,6 +39,7 @@ resource "google_bigquery_dataset" "mt5_trading" {
 
 
 # Storage bucket for Cloud Functions source code
+# Storage bucket for Cloud Functions source code
 resource "google_storage_bucket" "function_bucket" {
   count = var.create_storage_bucket ? 1 : 0
   
@@ -47,11 +48,18 @@ resource "google_storage_bucket" "function_bucket" {
   uniform_bucket_level_access = true
   
   lifecycle {
-    prevent_destroy = true
+    # Remove the prevent_destroy setting for now
+    # prevent_destroy = true
+    
+    # Instead, ignore changes to avoid recreation
     ignore_changes = [
       labels,
       storage_class,
-      versioning
+      versioning,
+      website,
+      cors,
+      logging,
+      lifecycle_rule
     ]
   }
 }
