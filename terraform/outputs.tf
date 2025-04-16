@@ -5,20 +5,20 @@ output "mt5_function_url" {
 
 output "bigquery_dataset" {
   description = "BigQuery dataset for MT5 data"
-  value       = google_bigquery_dataset.mt5_trading.dataset_id
+  value       = data.google_bigquery_dataset.mt5_trading.dataset_id
 }
 
 output "positions_table" {
   description = "BigQuery table for positions data"
-  value       = "${google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.positions.table_id}"
+  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.positions.table_id}"
 }
 
 output "transactions_table" {
   description = "BigQuery table for transactions data"
-  value       = "${google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.transactions.table_id}"
+  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.transactions.table_id}"
 }
 
 output "prices_table" {
   description = "BigQuery table for price updates data"
-  value       = "${google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.price_updates.table_id}"
+  value       = "${data.google_bigquery_dataset.mt5_trading.dataset_id}.${google_bigquery_table.price_updates.table_id}"
 }

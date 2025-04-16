@@ -3,24 +3,10 @@ provider "google" {
   region  = var.region
 }
 
-# Reference existing storage bucket instead of creating a new one
-resource "google_storage_bucket" "function_bucket" {
-  name     = "${var.project_id}-function-source"
-  location = "US"
-  uniform_bucket_level_access = true
-  
-  # Add this lifecycle block to prevent Terraform from recreating the bucket
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      location,
-      storage_class,
-      labels,
-      versioning
-    ]
-  }
+# Use data sources to reference existing resources instead of creating them
+data "google_storage_bucket" "function_bucket" {
+  name = "${var.project_id}-function-source"
 }
-
 
 # Create zip archive of the cloud function
 data "archive_file" "mt5_to_cloudfunction" {
@@ -32,33 +18,22 @@ data "archive_file" "mt5_to_cloudfunction" {
 # Upload the function source code to the bucket
 resource "google_storage_bucket_object" "mt5_function_zip" {
   name   = "source/mt5_to_cloudfunction_${data.archive_file.mt5_to_cloudfunction.output_md5}.zip"
-  bucket = google_storage_bucket.function_bucket.name
+  bucket = data.google_storage_bucket.function_bucket.name
   source = data.archive_file.mt5_to_cloudfunction.output_path
 }
 
-# Create BigQuery dataset
-# Reference existing BigQuery dataset
-resource "google_bigquery_dataset" "mt5_trading" {
-  dataset_id  = "mt5_trading"
-  description = "Dataset for MT5 trading data"
-  location    = "US"
-  
-  # Add this lifecycle block to prevent Terraform from trying to recreate the dataset
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      description,
-      default_table_expiration_ms,
-      labels
-    ]
-  }
+# Use data source to reference the existing BigQuery dataset
+data "google_bigquery_dataset" "mt5_trading" {
+  dataset_id = "mt5_trading"
+  project    = var.project_id
 }
 
-
-# Create BigQuery tables
+# Create or update BigQuery tables
 resource "google_bigquery_table" "positions" {
-  dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
   table_id   = "positions"
+  project    = var.project_id
+  deletion_protection = false # Set to true in production
 
   schema = <<EOF
 [
@@ -116,13 +91,13 @@ EOF
       clustering
     ]
   }
-  
 }
 
-
 resource "google_bigquery_table" "transactions" {
-  dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
   table_id   = "transactions"
+  project    = var.project_id
+  deletion_protection = false # Set to true in production
 
   schema = <<EOF
 [
@@ -173,11 +148,20 @@ resource "google_bigquery_table" "transactions" {
   }
 ]
 EOF
+  lifecycle {
+    ignore_changes = [
+      schema,
+      time_partitioning,
+      clustering
+    ]
+  }
 }
 
 resource "google_bigquery_table" "price_updates" {
-  dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
+  dataset_id = data.google_bigquery_dataset.mt5_trading.dataset_id
   table_id   = "price_updates"
+  project    = var.project_id
+  deletion_protection = false # Set to true in production
 
   schema = <<EOF
 [
@@ -208,24 +192,26 @@ resource "google_bigquery_table" "price_updates" {
   }
 ]
 EOF
+  lifecycle {
+    ignore_changes = [
+      schema,
+      time_partitioning,
+      clustering
+    ]
+  }
 }
 
-# Create service account for the function
-resource "google_service_account" "function_account" {
-  account_id   = "mt5-function-sa"
-  display_name = "MT5 Cloud Function Service Account"
+# Use data source to reference existing service account
+data "google_service_account" "function_account" {
+  account_id = "mt5-function-sa"
 }
 
-# Grant BigQuery data editor role to the service account
-resource "google_project_iam_binding" "function_bigquery" {
+# We'll use additive IAM bindings to avoid conflicts
+resource "google_project_iam_member" "function_bigquery" {
   project = var.project_id
   role    = "roles/bigquery.dataEditor"
-
-  members = [
-    "serviceAccount:${google_service_account.function_account.email}",
-  ]
+  member  = "serviceAccount:${data.google_service_account.function_account.email}"
 }
-// [Keep the rest of your file as is]
 
 # Deploy the cloud function
 resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
@@ -238,7 +224,7 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
     entry_point = "receive_message"
     source {
       storage_source {
-        bucket = google_storage_bucket.function_bucket.name
+        bucket = data.google_storage_bucket.function_bucket.name
         object = google_storage_bucket_object.mt5_function_zip.name
       }
     }
@@ -249,12 +235,12 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
     min_instance_count    = 0
     available_memory      = "256M"
     timeout_seconds       = 60
-    service_account_email = google_service_account.function_account.email
+    service_account_email = data.google_service_account.function_account.email
     environment_variables = {
-      BQ_DATASET           = "mt5_trading"
-      BQ_POSITIONS_TABLE   = "positions"
-      BQ_TRANSACTIONS_TABLE = "transactions"
-      BQ_PRICES_TABLE      = "price_updates"
+      BQ_DATASET            = data.google_bigquery_dataset.mt5_trading.dataset_id
+      BQ_POSITIONS_TABLE    = google_bigquery_table.positions.table_id
+      BQ_TRANSACTIONS_TABLE = google_bigquery_table.transactions.table_id
+      BQ_PRICES_TABLE       = google_bigquery_table.price_updates.table_id
     }
     ingress_settings      = "ALLOW_ALL"
     all_traffic_on_latest_revision = true
@@ -265,29 +251,16 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
       labels["deployment-tool"]
     ]
   }
-
-  depends_on = [
-    google_bigquery_dataset.mt5_trading,
-    google_bigquery_table.positions,
-    google_bigquery_table.transactions,
-    google_bigquery_table.price_updates
-  ]
 }
 
-# Add this instead of the trigger block for HTTP functions
+# Public access to Cloud Function
 resource "google_cloud_run_service_iam_member" "public_invoke" {
   location = var.region
   service  = google_cloudfunctions2_function.mt5_to_bigquery.name
   role     = "roles/run.invoker"
-  member   = "allUsers"  # This makes the function publicly accessible - be careful!
+  member   = "allUsers"
   
   depends_on = [
     google_cloudfunctions2_function.mt5_to_bigquery
   ]
 }
-
-# Remove this duplicate output
-# output "mt5_function_url" {
-#   description = "URL of the deployed MT5 cloud function"
-#   value       = google_cloudfunctions2_function.mt5_to_bigquery.url
-# }
