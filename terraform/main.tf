@@ -168,12 +168,12 @@ resource "google_bigquery_table" "price_updates" {
 }
 
 # Create a storage bucket for the function source code
-resource "google_storage_bucket" "function_bucket" {
-  name     = "${var.project_id}-cloud-functions"
-  location = var.region
-  uniform_bucket_level_access = true
-}
-
+#resource "google_storage_bucket" "function_bucket" {
+#  name     = "${var.project_id}-cloud-functions"
+#  location = var.region
+#  uniform_bucket_level_access = true
+#}
+#
 # Create a zip archive of the function source
 data "archive_file" "http_function_source" {
   type        = "zip"
@@ -202,9 +202,9 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
   source = data.archive_file.pubsub_function_source.output_path
 }
 
-resource "google_pubsub_topic" "mt5_topic" {
-  name = "mt5-trading-topic"
-}
+#resource "google_pubsub_topic" "mt5_topic" {
+#  name = "mt5-trading-topic"
+#}
 
 # HTTP Function (Gen 2)
 resource "google_cloudfunctions2_function" "http_function" {
