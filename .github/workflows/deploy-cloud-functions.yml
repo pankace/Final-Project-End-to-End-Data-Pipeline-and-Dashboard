@@ -108,21 +108,19 @@ jobs:
           -backend-config="prefix=terraform/state"
 
     # Conditionally create terraform.tfvars file based on what exists
-    - name: Create import variables file
-      working-directory: terraform
+    - name: Set Terraform environment variables
       run: |
-        cat > import_vars.tfvars << EOF
-        project_id = "${{ env.PROJECT_ID }}"
-        region = "${{ env.REGION }}"
-        service_account_email = "${{ env.SERVICE_ACCOUNT_EMAIL }}"
-        create_bigquery_dataset = true
-        create_storage_bucket = true
-        create_pubsub_topic = true
-        create_http_function = true
-        create_pubsub_function = true
-        EOF
-        
-        cat import_vars.tfvars
+        echo "TF_VAR_project_id=${{ env.PROJECT_ID }}" >> $GITHUB_ENV
+        echo "TF_VAR_region=${{ env.REGION }}" >> $GITHUB_ENV
+        echo "TF_VAR_service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}" >> $GITHUB_ENV
+        echo "TF_VAR_create_bigquery_dataset=${{ env.BQ_DATASET_EXISTS == 'false' }}" >> $GITHUB_ENV
+        echo "TF_VAR_create_storage_bucket=${{ env.BUCKET_EXISTS == 'false' }}" >> $GITHUB_ENV
+        echo "TF_VAR_create_pubsub_topic=${{ env.TOPIC_EXISTS == 'false' }}" >> $GITHUB_ENV
+        echo "TF_VAR_create_http_function=${{ env.HTTP_FUNCTION_EXISTS == 'false' }}" >> $GITHUB_ENV
+        echo "TF_VAR_create_pubsub_function=${{ env.PUBSUB_FUNCTION_EXISTS == 'false' }}" >> $GITHUB_ENV
+        echo "TF_VAR_bigquery_dataset=mt5_trading" >> $GITHUB_ENV
+        echo "TF_VAR_cloud_function_memory=256" >> $GITHUB_ENV
+        echo "TF_VAR_cloud_function_timeout=60" >> $GITHUB_ENV
 
     - name: Import existing resources and handle failures
       working-directory: terraform
@@ -134,38 +132,23 @@ jobs:
         echo 'HTTP_FUNCTION_EXISTS=false' >> $GITHUB_ENV
         echo 'PUBSUB_FUNCTION_EXISTS=false' >> $GITHUB_ENV
         
-        # Try to import BigQuery dataset
-        terraform import -var-file=terraform.tfvars google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:mt5_trading && \
+        # Pass individual variables for import commands
+        terraform import -var="project_id=${{ env.PROJECT_ID }}" -var="region=${{ env.REGION }}" -var="service_account_email=${{ env.SERVICE_ACCOUNT_EMAIL }}" \
+          google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:mt5_trading && \
           echo 'BQ_DATASET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import BigQuery dataset"
         
-        # Try to import storage bucket
-        terraform import -var-file=terraform.tfvars google_storage_bucket.function_bucket[0] ${{ env.PROJECT_ID }}-function-bucket && \
-          echo 'BUCKET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import storage bucket"
-        
-        # Try to import Pub/Sub topic
-        terraform import -var-file=terraform.tfvars google_pubsub_topic.mt5_topic[0] projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic && \
-          echo 'TOPIC_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import Pub/Sub topic"
-          
-        # Try to import Cloud Functions
-        terraform import -var-file=terraform.tfvars google_cloudfunctions2_function.http_function[0] projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/mt5-http-function && \
-          echo 'HTTP_FUNCTION_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import HTTP function"
-          
-        terraform import -var-file=terraform.tfvars google_cloudfunctions2_function.pubsub_function[0] projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/mt5-pubsub-function && \
-          echo 'PUBSUB_FUNCTION_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import PubSub function"
-          
+
     - name: Terraform Validate
       working-directory: terraform
       run: terraform validate
 
-
-
     - name: Terraform Plan
       working-directory: terraform
-      run: terraform plan -var-file=terraform.tfvars
+      run: terraform plan
       
     - name: Terraform Apply
       working-directory: terraform
-      run: terraform apply -auto-approve -var-file=terraform.tfvars
+      run: terraform apply -auto-approve
 
     - name: Output deployed function details
       working-directory: terraform
