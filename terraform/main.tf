@@ -192,6 +192,8 @@ resource "google_project_iam_binding" "function_bigquery" {
     "serviceAccount:${google_service_account.function_account.email}",
   ]
 }
+// [Keep the rest of your file as is]
+
 # Deploy the cloud function
 resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
   name        = "mt5-to-bigquery"
@@ -225,7 +227,6 @@ resource "google_cloudfunctions2_function" "mt5_to_bigquery" {
     all_traffic_on_latest_revision = true
   }
 
-  # Replace the trigger block with the proper syntax
   lifecycle {
     ignore_changes = [
       labels["deployment-tool"]
@@ -252,8 +253,8 @@ resource "google_cloud_run_service_iam_member" "public_invoke" {
   ]
 }
 
-# Add an output to easily get the function URL
-output "mt5_function_url" {
-  description = "URL of the deployed MT5 cloud function"
-  value       = google_cloudfunctions2_function.mt5_to_bigquery.url
-}
+# Remove this duplicate output
+# output "mt5_function_url" {
+#   description = "URL of the deployed MT5 cloud function"
+#   value       = google_cloudfunctions2_function.mt5_to_bigquery.url
+# }
