@@ -98,6 +98,41 @@ jobs:
       with:
         terraform_version: 1.0.0
         terraform_wrapper: false
+        
+    - name: Import existing resources and handle failures
+      working-directory: terraform
+      run: |
+        # Set defaults - assume resources don't exist
+        echo 'BQ_DATASET_EXISTS=false' >> $GITHUB_ENV
+        echo 'BUCKET_EXISTS=false' >> $GITHUB_ENV
+        echo 'TOPIC_EXISTS=false' >> $GITHUB_ENV
+        
+        # Try to import BigQuery dataset
+        terraform import google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:mt5_trading && \
+          echo 'BQ_DATASET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import BigQuery dataset"
+        
+        # Try to import storage bucket
+        terraform import google_storage_bucket.function_bucket[0] ${{ env.PROJECT_ID }}-function-bucket && \
+          echo 'BUCKET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import storage bucket"
+        
+        # Try to import Pub/Sub topic
+        terraform import google_pubsub_topic.mt5_topic[0] projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic && \
+          echo 'TOPIC_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import Pub/Sub topic"
+
+    # Create terraform.tfvars based on what exists
+    - name: Create terraform.tfvars
+      working-directory: terraform
+      run: |
+        cat > terraform.tfvars << EOF
+        project_id = "${{ env.PROJECT_ID }}"
+        region = "${{ env.REGION }}"
+        service_account_email = "${{ env.SERVICE_ACCOUNT }}"
+        create_bigquery_dataset = ${{ env.BQ_DATASET_EXISTS == 'false' }}
+        create_storage_bucket = ${{ env.BUCKET_EXISTS == 'false' }}
+        create_pubsub_topic = ${{ env.TOPIC_EXISTS == 'false' }}
+        EOF
+        
+        cat terraform.tfvars
 
     - name: Terraform Init
       working-directory: terraform
@@ -109,7 +144,7 @@ jobs:
     - name: Terraform Validate
       working-directory: terraform
       run: terraform validate
-      
+
     - name: Import existing resources and handle failures
       working-directory: terraform
       run: |

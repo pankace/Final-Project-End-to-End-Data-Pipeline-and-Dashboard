@@ -1,3 +1,20 @@
+terraform {
+  backend "gcs" {
+    # bucket and prefix will be set by GitHub Actions
+  }
+  
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 4.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
+  }
+}
+
 provider "google" {
   # Credentials and project ID will be provided by GitHub Actions environment
 }
@@ -9,7 +26,17 @@ resource "google_bigquery_dataset" "mt5_trading" {
   dataset_id = "mt5_trading"
   location   = var.region
   description = "MT5 Trading data"
+  
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      labels,
+      access,
+      default_table_expiration_ms
+    ]
+  }
 }
+
 
 # Storage bucket for Cloud Functions source code
 resource "google_storage_bucket" "function_bucket" {
@@ -18,13 +45,32 @@ resource "google_storage_bucket" "function_bucket" {
   name     = "${var.project_id}-function-bucket"
   location = var.region
   uniform_bucket_level_access = true
+  
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      labels,
+      storage_class,
+      versioning
+    ]
+  }
 }
+
 
 # Pub/Sub topic for MT5 updates
 resource "google_pubsub_topic" "mt5_topic" {
   count = var.create_pubsub_topic ? 1 : 0
   
   name = "mt5-trading-topic"
+  
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      labels,
+      kms_key_name,
+      message_retention_duration
+    ]
+  }
 }
 
 # BigQuery tables
