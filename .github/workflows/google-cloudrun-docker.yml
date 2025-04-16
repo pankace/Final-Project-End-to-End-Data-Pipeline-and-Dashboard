@@ -45,8 +45,7 @@ jobs:
 
     - name: Set up Cloud SDK
       uses: 'google-github-actions/setup-gcloud@v1'
-      with:
-        install_components: 'gcloud beta'
+      # Removed the incorrect component installation
 
     - name: Prepare function deployment directories
       run: |
@@ -122,5 +121,5 @@ jobs:
     - name: Output deployed function details
       working-directory: terraform
       run: |
-        echo "HTTP Function URL: $(terraform output -raw cloud_function_http_url)"
-        echo "Pub/Sub Function Name: $(terraform output -raw cloud_function_pubsub_name)"
+        echo "HTTP Function URL: $(terraform output -raw cloud_function_http_url || echo 'Output not available')"
+        echo "Pub/Sub Function Name: $(terraform output -raw cloud_function_pubsub_name || echo 'Output not available')"
