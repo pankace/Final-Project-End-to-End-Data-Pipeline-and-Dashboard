@@ -3,12 +3,24 @@ provider "google" {
   region  = var.region
 }
 
-# Create a storage bucket for the cloud function source code
+# Reference existing storage bucket instead of creating a new one
 resource "google_storage_bucket" "function_bucket" {
   name     = "${var.project_id}-function-source"
   location = "US"
   uniform_bucket_level_access = true
+  
+  # Add this lifecycle block to prevent Terraform from recreating the bucket
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      location,
+      storage_class,
+      labels,
+      versioning
+    ]
+  }
 }
+
 
 # Create zip archive of the cloud function
 data "archive_file" "mt5_to_cloudfunction" {
@@ -25,11 +37,23 @@ resource "google_storage_bucket_object" "mt5_function_zip" {
 }
 
 # Create BigQuery dataset
+# Reference existing BigQuery dataset
 resource "google_bigquery_dataset" "mt5_trading" {
   dataset_id  = "mt5_trading"
   description = "Dataset for MT5 trading data"
   location    = "US"
+  
+  # Add this lifecycle block to prevent Terraform from trying to recreate the dataset
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      description,
+      default_table_expiration_ms,
+      labels
+    ]
+  }
 }
+
 
 # Create BigQuery tables
 resource "google_bigquery_table" "positions" {
@@ -85,7 +109,16 @@ resource "google_bigquery_table" "positions" {
   }
 ]
 EOF
+  lifecycle {
+    ignore_changes = [
+      schema,
+      time_partitioning,
+      clustering
+    ]
+  }
+  
 }
+
 
 resource "google_bigquery_table" "transactions" {
   dataset_id = google_bigquery_dataset.mt5_trading.dataset_id
