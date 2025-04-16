@@ -106,7 +106,7 @@ jobs:
         terraform init \
           -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
           -backend-config="prefix=terraform/state"
-          
+
     # Conditionally create terraform.tfvars file based on what exists
     - name: Create terraform.tfvars
       working-directory: terraform
@@ -135,25 +135,23 @@ jobs:
         echo 'PUBSUB_FUNCTION_EXISTS=false' >> $GITHUB_ENV
         
         # Try to import BigQuery dataset
-        terraform import google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:mt5_trading && \
+        terraform import -var-file=import_vars.tfvars google_bigquery_dataset.mt5_trading[0] ${{ env.PROJECT_ID }}:mt5_trading && \
           echo 'BQ_DATASET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import BigQuery dataset"
         
         # Try to import storage bucket
-        terraform import google_storage_bucket.function_bucket[0] ${{ env.PROJECT_ID }}-function-bucket && \
+        terraform import -var-file=import_vars.tfvars google_storage_bucket.function_bucket[0] ${{ env.PROJECT_ID }}-function-bucket && \
           echo 'BUCKET_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import storage bucket"
         
         # Try to import Pub/Sub topic
-        terraform import google_pubsub_topic.mt5_topic[0] projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic && \
+        terraform import -var-file=import_vars.tfvars google_pubsub_topic.mt5_topic[0] projects/${{ env.PROJECT_ID }}/topics/mt5-trading-topic && \
           echo 'TOPIC_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import Pub/Sub topic"
           
         # Try to import Cloud Functions
-        terraform import google_cloudfunctions2_function.http_function projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/mt5-http-function && \
+        terraform import -var-file=import_vars.tfvars google_cloudfunctions2_function.http_function[0] projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/mt5-http-function && \
           echo 'HTTP_FUNCTION_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import HTTP function"
           
-        terraform import google_cloudfunctions2_function.pubsub_function projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/mt5-pubsub-function && \
+        terraform import -var-file=import_vars.tfvars google_cloudfunctions2_function.pubsub_function[0] projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/functions/mt5-pubsub-function && \
           echo 'PUBSUB_FUNCTION_EXISTS=true' >> $GITHUB_ENV || echo "Failed to import PubSub function"
-
-
 
 
     - name: Terraform Validate
