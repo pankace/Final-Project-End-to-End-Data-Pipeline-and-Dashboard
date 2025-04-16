@@ -189,6 +189,7 @@ class MT5WebSocketServer:
                 "message": f"Unknown action: {action}"
             }))
 
+
     async def send_missed_trades(self, websocket, last_trade_id, last_transaction_id):
         """Send missed trades to a newly connected client"""
         try:
