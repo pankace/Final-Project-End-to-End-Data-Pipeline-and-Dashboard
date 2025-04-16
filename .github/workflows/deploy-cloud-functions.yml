@@ -263,12 +263,44 @@ jobs:
         echo "TF_VAR_cloud_function_memory=256" >> $GITHUB_ENV
         echo "TF_VAR_cloud_function_timeout=60" >> $GITHUB_ENV
         
-        # Set create_* variables based on what exists - set to false for existing resources
-        echo "TF_VAR_create_bigquery_dataset=${{ env.BQ_DATASET_EXISTS == 'false' }}" >> $GITHUB_ENV
-        echo "TF_VAR_create_storage_bucket=${{ env.BUCKET_EXISTS == 'false' }}" >> $GITHUB_ENV
-        echo "TF_VAR_create_pubsub_topic=${{ env.TOPIC_EXISTS == 'false' }}" >> $GITHUB_ENV
-        echo "TF_VAR_create_http_function=${{ env.HTTP_FUNCTION_EXISTS == 'false' }}" >> $GITHUB_ENV
-        echo "TF_VAR_create_pubsub_function=${{ env.PUBSUB_FUNCTION_EXISTS == 'false' }}" >> $GITHUB_ENV
+        # Set create_* variables explicitly based on existence check
+        if [ "${{ env.BQ_DATASET_EXISTS }}" = "false" ]; then
+          echo "TF_VAR_create_bigquery_dataset=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_create_bigquery_dataset=false" >> $GITHUB_ENV
+        fi
+        
+        if [ "${{ env.BUCKET_EXISTS }}" = "false" ]; then
+          echo "TF_VAR_create_storage_bucket=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_create_storage_bucket=false" >> $GITHUB_ENV
+        fi
+        
+        if [ "${{ env.TOPIC_EXISTS }}" = "false" ]; then
+          echo "TF_VAR_create_pubsub_topic=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_create_pubsub_topic=false" >> $GITHUB_ENV
+        fi
+        
+        if [ "${{ env.HTTP_FUNCTION_EXISTS }}" = "false" ]; then
+          echo "TF_VAR_create_http_function=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_create_http_function=false" >> $GITHUB_ENV
+        fi
+        
+        if [ "${{ env.PUBSUB_FUNCTION_EXISTS }}" = "false" ]; then
+          echo "TF_VAR_create_pubsub_function=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_create_pubsub_function=false" >> $GITHUB_ENV
+        fi
+        
+        # Debug - print all environment variables
+        echo "Variables set for Terraform:"
+        echo "TF_VAR_create_bigquery_dataset: $TF_VAR_create_bigquery_dataset"
+        echo "TF_VAR_create_storage_bucket: $TF_VAR_create_storage_bucket"
+        echo "TF_VAR_create_pubsub_topic: $TF_VAR_create_pubsub_topic"
+        echo "TF_VAR_create_http_function: $TF_VAR_create_http_function"
+        echo "TF_VAR_create_pubsub_function: $TF_VAR_create_pubsub_function"
 
     - name: Import existing resources
       working-directory: terraform
