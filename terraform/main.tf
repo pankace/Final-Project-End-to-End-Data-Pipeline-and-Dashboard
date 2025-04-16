@@ -1,19 +1,17 @@
 provider "google" {
-  project = var.project_id
-  region  = var.region
+  # Credentials and project ID will be provided by GitHub Actions environment
 }
 
-#resource "google_bigquery_dataset" "mt5_trading" {
-#  dataset_id = "mt5_trading"
-#  location   = var.region
-#}
+# BigQuery dataset conditionally created based on variable
 resource "google_bigquery_dataset" "mt5_trading" {
   count = var.create_bigquery_dataset ? 1 : 0
   
   dataset_id = "mt5_trading"
   location   = var.region
+  description = "MT5 Trading data"
 }
 
+# Storage bucket for Cloud Functions source code
 resource "google_storage_bucket" "function_bucket" {
   count = var.create_storage_bucket ? 1 : 0
   
@@ -22,62 +20,25 @@ resource "google_storage_bucket" "function_bucket" {
   uniform_bucket_level_access = true
 }
 
+# Pub/Sub topic for MT5 updates
 resource "google_pubsub_topic" "mt5_topic" {
   count = var.create_pubsub_topic ? 1 : 0
   
   name = "mt5-trading-topic"
 }
 
+# BigQuery tables
 resource "google_bigquery_table" "positions" {
   dataset_id = google_bigquery_dataset.mt5_trading[0].dataset_id
   table_id   = "positions"
 
   schema = jsonencode([
     {
-      name = "timestamp"
-      type = "TIMESTAMP"
+      name = "timestamp",
+      type = "TIMESTAMP",
       mode = "REQUIRED"
     },
-    {
-      name = "trade_id"
-      type = "STRING"
-      mode = "REQUIRED"
-    },
-    {
-      name = "symbol"
-      type = "STRING"
-      mode = "REQUIRED"
-    },
-    {
-      name = "type"
-      type = "STRING"
-      mode = "REQUIRED"
-    },
-    {
-      name = "volume"
-      type = "FLOAT"
-      mode = "REQUIRED"
-    },
-    {
-      name = "price"
-      type = "FLOAT"
-      mode = "REQUIRED"
-    },
-    {
-      name = "profit"
-      type = "FLOAT"
-      mode = "REQUIRED"
-    },
-    {
-      name = "sl"
-      type = "FLOAT"
-      mode = "NULLABLE"
-    },
-    {
-      name = "tp"
-      type = "FLOAT"
-      mode = "NULLABLE"
-    }
+    # Add other fields as needed
   ])
 }
 
@@ -87,48 +48,48 @@ resource "google_bigquery_table" "transactions" {
 
   schema = jsonencode([
     {
-      name = "timestamp"
-      type = "TIMESTAMP"
+      name = "timestamp",
+      type = "TIMESTAMP",
       mode = "REQUIRED"
     },
     {
-      name = "transaction_id"
-      type = "STRING"
+      name = "ticket",
+      type = "INTEGER",
       mode = "REQUIRED"
     },
     {
-      name = "symbol"
-      type = "STRING"
+      name = "type",
+      type = "STRING",
       mode = "REQUIRED"
     },
     {
-      name = "type"
-      type = "STRING"
+      name = "symbol",
+      type = "STRING",
       mode = "REQUIRED"
     },
     {
-      name = "volume"
-      type = "FLOAT"
+      name = "volume",
+      type = "FLOAT",
       mode = "REQUIRED"
     },
     {
-      name = "price"
-      type = "FLOAT"
+      name = "price",
+      type = "FLOAT",
       mode = "REQUIRED"
     },
     {
-      name = "commission"
-      type = "FLOAT"
+      name = "commission",
+      type = "FLOAT",
       mode = "NULLABLE"
     },
     {
-      name = "swap"
-      type = "FLOAT"
+      name = "swap",
+      type = "FLOAT",
       mode = "NULLABLE"
     },
     {
-      name = "profit"
-      type = "FLOAT"
+      name = "profit",
+      type = "FLOAT",
       mode = "REQUIRED"
     }
   ])
@@ -140,53 +101,44 @@ resource "google_bigquery_table" "price_updates" {
 
   schema = jsonencode([
     {
-      name = "timestamp"
-      type = "TIMESTAMP"
+      name = "timestamp",
+      type = "TIMESTAMP",
       mode = "REQUIRED"
     },
     {
-      name = "symbol"
-      type = "STRING"
+      name = "symbol",
+      type = "STRING",
       mode = "REQUIRED"
     },
     {
-      name = "bid"
-      type = "FLOAT"
+      name = "bid",
+      type = "FLOAT",
       mode = "REQUIRED"
     },
     {
-      name = "ask"
-      type = "FLOAT"
+      name = "ask",
+      type = "FLOAT",
       mode = "REQUIRED"
     },
     {
-      name = "spread"
-      type = "FLOAT"
+      name = "spread",
+      type = "FLOAT",
       mode = "REQUIRED"
     }
   ])
 }
 
-# Create a storage bucket for the function source code
-#resource "google_storage_bucket" "function_bucket" {
-#  name     = "${var.project_id}-cloud-functions"
-#  location = var.region
-#  uniform_bucket_level_access = true
-#}
-#
 # Create a zip archive of the function source
 data "archive_file" "http_function_source" {
   type        = "zip"
   output_path = "${path.module}/http_function.zip"
-  
-  source_dir = "../function_deploy/http_function"
+  source_dir  = "../function_deploy/http_function"
 }
 
 data "archive_file" "pubsub_function_source" {
   type        = "zip"
   output_path = "${path.module}/pubsub_function.zip"
-  
-  source_dir = "../function_deploy/pubsub_function"
+  source_dir  = "../function_deploy/pubsub_function"
 }
 
 # Upload the function source to the bucket
@@ -201,10 +153,6 @@ resource "google_storage_bucket_object" "pubsub_function_zip" {
   bucket = google_storage_bucket.function_bucket[0].name
   source = data.archive_file.pubsub_function_source.output_path
 }
-
-#resource "google_pubsub_topic" "mt5_topic" {
-#  name = "mt5-trading-topic"
-#}
 
 # HTTP Function (Gen 2)
 resource "google_cloudfunctions2_function" "http_function" {
@@ -224,7 +172,7 @@ resource "google_cloudfunctions2_function" "http_function" {
   }
 
   service_config {
-    max_instance_count = 5
+    max_instance_count = 10
     min_instance_count = 0
     available_memory   = "${var.cloud_function_memory}M"
     timeout_seconds    = var.cloud_function_timeout

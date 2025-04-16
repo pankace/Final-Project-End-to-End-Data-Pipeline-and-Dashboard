@@ -1,57 +1,51 @@
 variable "project_id" {
-  description = "The ID of the Google Cloud project"
+  description = "The GCP project ID"
   type        = string
 }
 
 variable "region" {
-  description = "The region where resources will be deployed"
+  description = "The GCP region for resources"
   type        = string
   default     = "us-central1"
 }
 
 variable "bigquery_dataset" {
-  description = "The name of the BigQuery dataset"
+  description = "The BigQuery dataset name"
   type        = string
   default     = "mt5_trading"
 }
 
-variable "cloud_function_memory" {
-  description = "The amount of memory allocated for the Cloud Functions"
-  type        = number
-  default     = 256
-}
-
-variable "cloud_function_timeout" {
-  description = "The timeout for the Cloud Functions in seconds"
-  type        = number
-  default     = 60
-}
-
-variable "pubsub_topic" {
-  description = "The name of the Pub/Sub topic"
-  type        = string
-  default     = "mt5-trading-topic"
-}
-
 variable "service_account_email" {
-  description = "The email of the service account used for authentication"
+  description = "The service account email for Cloud Functions"
   type        = string
 }
 
 variable "create_bigquery_dataset" {
-  description = "Whether to create the BigQuery dataset"
+  description = "Whether to create a BigQuery dataset"
   type        = bool
   default     = true
 }
 
 variable "create_storage_bucket" {
-  description = "Whether to create the storage bucket"
+  description = "Whether to create a storage bucket for functions"
   type        = bool
   default     = true
 }
 
 variable "create_pubsub_topic" {
-  description = "Whether to create the Pub/Sub topic"
+  description = "Whether to create a Pub/Sub topic"
   type        = bool
   default     = true
+}
+
+variable "cloud_function_memory" {
+  description = "Memory allocated to Cloud Functions (in MB)"
+  type        = number
+  default     = 256
+}
+
+variable "cloud_function_timeout" {
+  description = "Timeout for Cloud Functions (in seconds)"
+  type        = number
+  default     = 60
 }
