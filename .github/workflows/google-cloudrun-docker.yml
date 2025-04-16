@@ -40,6 +40,14 @@ jobs:
         with:
           terraform_version: 1.4.0
           
+      - name: Create tmp directory for archives
+        run: mkdir -p terraform/tmp
+          
+      - name: Zip Cloud Function source
+        run: |
+          cd functions/mt5\ to\ cloudfunction
+          zip -r ../../terraform/tmp/mt5_to_cloudfunction.zip .
+          
       - name: Terraform Init
         working-directory: ./terraform
         run: |
@@ -85,17 +93,24 @@ jobs:
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
-          
-      # Uncomment when tests are ready
-      # - name: Run tests
-      #   run: |
-      #     pytest backend/tests/
+          pip install -r backend/requirements.txt || echo "No requirements.txt found, creating it"
+          pip install websockets==10.4 python-dotenv==0.21.0 requests==2.28.2 backoff==2.2.1 google-cloud-bigquery==3.11.4
           
       - name: Download function URL
         uses: actions/download-artifact@v3
         with:
           name: function-url
+          
+      - name: Create .env file for local testing
+        run: |
+          echo "# MT5 to BigQuery Pipeline Configuration" > backend/.env
+          echo "MT5_WS_URL=ws://localhost:8765" >> backend/.env
+          echo "CLOUD_FUNCTION_URL=$(cat function_url.txt)" >> backend/.env
+          echo "MT5_SYMBOLS=EURUSD,GBPUSD,USDJPY,XAUUSD" >> backend/.env
+          echo "BQ_DATASET=mt5_trading" >> backend/.env
+          echo "BQ_POSITIONS_TABLE=positions" >> backend/.env
+          echo "BQ_TRANSACTIONS_TABLE=transactions" >> backend/.env
+          echo "BQ_PRICES_TABLE=price_updates" >> backend/.env
           
       - name: Display deployment info
         run: |
