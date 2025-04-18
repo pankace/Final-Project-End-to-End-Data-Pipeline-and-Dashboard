@@ -244,6 +244,7 @@ These scripts connect MT5 to Pub/Sub and need to run continuously on a machine w
         *   `GOOGLE_CLOUD_PROJECT`: Your GCP Project ID.
 
 3.  **Run the WebSocket Server (`server.py`)**:
+   *ammed to use pubsub file later*
     *   Connects to MT5 and serves data locally via WebSocket.
     ```bash
     # In the vmside directory
